@@ -1,0 +1,226 @@
+name: Test Coverage Bot
+
+# Triggered by `repository_dispatch` events sent from matrixone's bridge
+# workflow when a maintainer types a slash command in a PR comment.
+#
+# event_type: one of   analyze-pr | gen-chaos-pr  (extend as new generators land)
+# client_payload:
+#   pr_number:  source PR number in matrixone
+#   repo:       source repo (e.g. matrixorigin/matrixone)
+#   comment_id: id of the originating comment (for reactions)
+
+on:
+  repository_dispatch:
+    types: [analyze-pr, gen-chaos-pr]
+  workflow_dispatch:
+    inputs:
+      event_type:
+        description: 'Command (analyze-pr | gen-chaos-pr)'
+        required: true
+        default: analyze-pr
+      pr_number:
+        description: 'matrixone PR number'
+        required: true
+      repo:
+        description: 'Source repo'
+        required: false
+        default: matrixorigin/matrixone
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Resolve dispatch inputs
+        id: ctx
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "event_type=${{ github.event.action }}"                    >> "$GITHUB_OUTPUT"
+            echo "pr_number=${{ github.event.client_payload.pr_number }}"   >> "$GITHUB_OUTPUT"
+            echo "repo=${{ github.event.client_payload.repo }}"             >> "$GITHUB_OUTPUT"
+            echo "comment_id=${{ github.event.client_payload.comment_id }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "event_type=${{ inputs.event_type }}" >> "$GITHUB_OUTPUT"
+            echo "pr_number=${{ inputs.pr_number }}"   >> "$GITHUB_OUTPUT"
+            echo "repo=${{ inputs.repo }}"             >> "$GITHUB_OUTPUT"
+            echo "comment_id="                         >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout bot repo
+        uses: actions/checkout@v4
+
+      - name: Checkout matrixone skill docs (sparse)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.ctx.outputs.repo }}
+          ref: main
+          path: matrixone-skills
+          sparse-checkout: |
+            docs/ai-skills
+          sparse-checkout-cone-mode: false
+
+      - name: Wire skill docs into expected path
+        run: |
+          mkdir -p docs
+          ln -sf "$GITHUB_WORKSPACE/matrixone-skills/docs/ai-skills" docs/ai-skills
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet requests
+
+      - name: Acknowledge command (eyes reaction)
+        if: steps.ctx.outputs.comment_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
+        run: |
+          gh api repos/${{ steps.ctx.outputs.repo }}/issues/comments/${{ steps.ctx.outputs.comment_id }}/reactions \
+            -f content="eyes" --silent || true
+
+      - name: Route to handler
+        id: route
+        run: |
+          case "${{ steps.ctx.outputs.event_type }}" in
+            analyze-pr)    echo "script=analyze_pr.py"   >> "$GITHUB_OUTPUT" ;;
+            gen-chaos-pr)  echo "script=gen_chaos_pr.py" >> "$GITHUB_OUTPUT" ;;
+            *) echo "Unknown event_type: ${{ steps.ctx.outputs.event_type }}" >&2; exit 1 ;;
+          esac
+
+      - name: Run handler
+        working-directory: scripts
+        env:
+          PR_NUMBER: ${{ steps.ctx.outputs.pr_number }}
+          GITHUB_REPOSITORY: ${{ steps.ctx.outputs.repo }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          BOT_REPO: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
+          CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
+          LLM_API_TOKEN: ${{ secrets.LLM_API_TOKEN }}
+          LLM_API_BASE: ${{ vars.LLM_API_BASE }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+        run: |
+          ln -sf ../docs ./docs
+          python "${{ steps.route.outputs.script }}"
+
+      - name: Success reaction
+        if: success() && steps.ctx.outputs.comment_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
+        run: |
+          gh api repos/${{ steps.ctx.outputs.repo }}/issues/comments/${{ steps.ctx.outputs.comment_id }}/reactions \
+            -f content="rocket" --silent || true
+
+      - name: Failure reaction & note
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
+        run: |
+          if [ -n "${{ steps.ctx.outputs.comment_id }}" ]; then
+            gh api repos/${{ steps.ctx.outputs.repo }}/issues/comments/${{ steps.ctx.outputs.comment_id }}/reactions \
+              -f content="confused" --silent || true
+          fi
+          gh pr comment "${{ steps.ctx.outputs.pr_number }}" \
+            --repo "${{ steps.ctx.outputs.repo }}" \
+            --body "❌ Test Coverage Bot 执行失败，详见 [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})." || true
+name: Test Coverage Bot
+
+# Triggered by slash commands in PR comments. Routes to a Python script under
+# .github/scripts/ based on the command keyword. Add new generators by
+# extending the `route` step's case statement and dropping a new script in.
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  dispatch:
+    if: >-
+      github.event.issue.pull_request &&
+      (
+        startsWith(github.event.comment.body, '/analyze-pr') ||
+        startsWith(github.event.comment.body, '/gen-chaos-pr')
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout matrixone (sparse, for skill docs + scripts)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          sparse-checkout: |
+            .github/scripts
+            docs/ai-skills
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install --quiet requests
+
+      - name: Acknowledge command (eyes reaction)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content="eyes" --silent || true
+
+      - name: Route command
+        id: route
+        run: |
+          body="${{ github.event.comment.body }}"
+          case "$body" in
+            /analyze-pr*)    echo "script=analyze_pr.py"   >> "$GITHUB_OUTPUT" ;;
+            /gen-chaos-pr*)  echo "script=gen_chaos_pr.py" >> "$GITHUB_OUTPUT" ;;
+            *)               echo "Unknown command: $body" >&2; exit 1 ;;
+          esac
+
+      - name: Run handler
+        working-directory: .github/scripts
+        env:
+          PR_NUMBER: ${{ github.event.issue.number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
+          LLM_API_TOKEN: ${{ secrets.LLM_API_TOKEN }}
+          LLM_API_BASE: ${{ vars.LLM_API_BASE }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
+        run: |
+          # Ensure docs/ai-skills is reachable via the relative path scripts use.
+          ln -sf "$GITHUB_WORKSPACE/docs" ./docs
+          python "${{ steps.route.outputs.script }}"
+
+      - name: Success reaction
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content="rocket" --silent || true
+
+      - name: Failure reaction & note
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          gh api repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}/reactions \
+            -f content="confused" --silent || true
+          gh pr comment "$PR_NUMBER" --repo "${{ github.repository }}" \
+            --body "❌ Test Coverage Bot 执行失败，详见 [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})." || true
