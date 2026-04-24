@@ -58,7 +58,8 @@ SKILL_RULES: list[tuple[str, str]] = [
     ("pkg/logservice/", "architecture.md"),
 ]
 
-DIFF_LIMIT_CHARS = 30000
+DIFF_LIMIT_CHARS = 12000
+SKILL_LIMIT_CHARS = 20000
 
 
 @dataclass
@@ -130,13 +131,28 @@ def load_skills(changed_files: Iterable[str], extra: Iterable[str] = ()) -> str:
             selected.append(doc)
 
     parts: list[str] = []
+    total = 0
     for doc in selected:
         path = os.path.join(SKILL_DIR, doc)
         try:
             with open(path, "r", encoding="utf-8") as f:
-                parts.append(f"=== {doc} ===\n{f.read().rstrip()}\n")
+                content = f.read().rstrip()
         except FileNotFoundError:
             sys.stderr.write(f"warning: skill doc missing: {path}\n")
+            continue
+        chunk = f"=== {doc} ===\n{content}\n"
+        if total + len(chunk) > SKILL_LIMIT_CHARS:
+            # Truncate this doc to fit the cap and stop loading more.
+            remaining = max(0, SKILL_LIMIT_CHARS - total)
+            if remaining > 200:
+                parts.append(chunk[:remaining] + "\n... [truncated]\n")
+            sys.stderr.write(
+                f"info: skill budget {SKILL_LIMIT_CHARS} reached after {doc}; "
+                f"remaining docs skipped\n"
+            )
+            break
+        parts.append(chunk)
+        total += len(chunk)
     return "\n".join(parts)
 
 
