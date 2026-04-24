@@ -106,7 +106,7 @@ SCENARIO_RE = re.compile(r"^[a-z0-9_]{3,40}$")
 
 def main() -> int:
     pr_number = os.environ["PR_NUMBER"]
-    repo = os.environ["GITHUB_REPOSITORY"]
+    repo = os.environ.get("SOURCE_REPO") or os.environ["GITHUB_REPOSITORY"]
     cross_token = os.environ.get("CROSS_REPO_TOKEN", "")
 
     pr = c.fetch_pr(pr_number, repo)

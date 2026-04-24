@@ -63,7 +63,7 @@ SYSTEM_PROMPT_TMPL = """你是 MatrixOne 测试分析专家。任务：分析 PR
 
 def main() -> int:
     pr_number = os.environ["PR_NUMBER"]
-    repo = os.environ["GITHUB_REPOSITORY"]
+    repo = os.environ.get("SOURCE_REPO") or os.environ["GITHUB_REPOSITORY"]
 
     pr = c.fetch_pr(pr_number, repo)
     if not pr.diff.strip():

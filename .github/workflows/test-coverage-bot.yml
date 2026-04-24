@@ -96,7 +96,7 @@ jobs:
         working-directory: scripts
         env:
           PR_NUMBER: ${{ steps.ctx.outputs.pr_number }}
-          GITHUB_REPOSITORY: ${{ steps.ctx.outputs.repo }}
+          SOURCE_REPO: ${{ steps.ctx.outputs.repo }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           BOT_REPO: ${{ github.repository }}
           GITHUB_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
