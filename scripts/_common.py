@@ -146,8 +146,8 @@ def load_skills(changed_files: Iterable[str], extra: Iterable[str] = ()) -> str:
 
 def call_llm(system_prompt: str, user_prompt: str, *, max_tokens: int = 4096,
              temperature: float = 0.3) -> str:
-    api_base = os.environ.get("LLM_API_BASE", "https://models.github.ai/inference")
-    model = os.environ.get("LLM_MODEL", "openai/gpt-4.1")
+    api_base = os.environ.get("LLM_API_BASE") or "https://models.github.ai/inference"
+    model = os.environ.get("LLM_MODEL") or "openai/gpt-4.1"
     token = os.environ.get("LLM_API_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
     if not token:
         raise RuntimeError("missing LLM token (set LLM_API_TOKEN or GITHUB_TOKEN)")

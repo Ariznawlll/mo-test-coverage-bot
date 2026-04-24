@@ -66,6 +66,7 @@ jobs:
         run: |
           mkdir -p docs
           ln -sf "$GITHUB_WORKSPACE/matrixone-skills/docs/ai-skills" docs/ai-skills
+          ls docs/ai-skills | head
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -103,8 +104,8 @@ jobs:
           GH_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
           CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
           LLM_API_TOKEN: ${{ secrets.LLM_API_TOKEN }}
-          LLM_API_BASE: ${{ vars.LLM_API_BASE }}
-          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_API_BASE: ${{ vars.LLM_API_BASE || 'https://models.github.ai/inference' }}
+          LLM_MODEL: ${{ vars.LLM_MODEL || 'openai/gpt-4.1' }}
         run: |
           ln -sf ../docs ./docs
           python "${{ steps.route.outputs.script }}"
