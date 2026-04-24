@@ -32,8 +32,8 @@ import sys
 import _common as c
 
 
-TARGET_REPO = "matrixorigin/mo-nightly-regression"
-TARGET_BASE = "main"
+TARGET_REPO = os.environ.get("CHAOS_TARGET_REPO", "Ariznawlll/mo-nightly-regression")
+TARGET_BASE = os.environ.get("CHAOS_TARGET_BASE", "main")
 
 SYSTEM_PROMPT_TMPL = """你是 MatrixOne Chaos 测试专家。任务：根据 PR diff 设计一个 chaos 场景，生成 mo-nightly-regression 仓库需要新增/修改的文件。
 
