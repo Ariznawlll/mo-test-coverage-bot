@@ -11,11 +11,11 @@ name: Test Coverage Bot
 
 on:
   repository_dispatch:
-    types: [analyze-pr, gen-chaos-pr]
+    types: [analyze-pr, gen-chaos-pr, auto-test-pr]
   workflow_dispatch:
     inputs:
       event_type:
-        description: 'Command (analyze-pr | gen-chaos-pr)'
+        description: 'Command (analyze-pr | gen-chaos-pr | auto-test-pr)'
         required: true
         default: analyze-pr
       pr_number:
@@ -90,6 +90,7 @@ jobs:
           case "${{ steps.ctx.outputs.event_type }}" in
             analyze-pr)    echo "script=analyze_pr.py"   >> "$GITHUB_OUTPUT" ;;
             gen-chaos-pr)  echo "script=gen_chaos_pr.py" >> "$GITHUB_OUTPUT" ;;
+            auto-test-pr)  echo "script=auto_test_pr.py" >> "$GITHUB_OUTPUT" ;;
             *) echo "Unknown event_type: ${{ steps.ctx.outputs.event_type }}" >&2; exit 1 ;;
           esac
 
@@ -103,6 +104,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
           GH_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
           CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
+          BVT_CROSS_TOKEN: ${{ secrets.BVT_CROSS_TOKEN }}
           LLM_API_TOKEN: ${{ secrets.LLM_API_TOKEN }}
           LLM_API_BASE: ${{ vars.LLM_API_BASE || 'https://models.github.ai/inference' }}
           LLM_MODEL: ${{ vars.LLM_MODEL || 'openai/gpt-4.1' }}
