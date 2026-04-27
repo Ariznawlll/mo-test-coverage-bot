@@ -105,6 +105,8 @@ jobs:
           GH_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
           CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
           BVT_CROSS_TOKEN: ${{ secrets.BVT_CROSS_TOKEN }}
+          BVT_TARGET_REPO: ${{ vars.BVT_TARGET_REPO || 'matrixorigin/matrixone' }}
+          BVT_TARGET_BASE: ${{ vars.BVT_TARGET_BASE || 'main' }}
           LLM_API_TOKEN: ${{ secrets.LLM_API_TOKEN }}
           LLM_API_BASE: ${{ vars.LLM_API_BASE || 'https://models.github.ai/inference' }}
           LLM_MODEL: ${{ vars.LLM_MODEL || 'openai/gpt-4.1' }}
