@@ -84,6 +84,8 @@ ANALYZE_SYSTEM_TMPL = """你是 MatrixOne 测试分析专家。任务：分析 P
 - 只根据 skill 文档和 diff 内容分析，不猜测
 - 对每种类型必须给出明确判断
 - JSON 代码块必须在报告最后，单独一个 ```json ... ``` 块
+- **不要在建议里提示用户手动运行任何 slash 命令**（如 `/gen-chaos-pr`、`/gen-bigdata-pr` 等已废弃）。
+  本命令 `/auto-test-pr` 会根据上述 JSON 自动为每个 ⚠️ 类型生成对应的跨仓 PR，无需用户再触发其他命令。
 """
 
 

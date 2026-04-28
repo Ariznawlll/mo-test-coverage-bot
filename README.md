@@ -7,9 +7,9 @@ Lives outside matrixone so the database repo stays free of CI plumbing, LLM secr
 ## Architecture
 
 ```
-matrixone PR comment "/analyze-pr"
+matrixone PR comment "/auto-test-pr"
         │
-        ▼   .github/workflows/test-coverage-bot-bridge.yml  (~50 lines, only matrixone touch-point)
+        ▼   .github/workflows/test-coverage-bot-bridge.yml  (~40 lines, only matrixone touch-point)
    gh api repos/<bot>/dispatches  →  repository_dispatch
         │
         ▼   THIS REPO  .github/workflows/test-coverage-bot.yml
@@ -26,11 +26,9 @@ matrixone PR comment "/analyze-pr"
 
 | Command | Handler | Effect |
 |---------|---------|--------|
-| `/analyze-pr` | [analyze_pr.py](scripts/analyze_pr.py) | Posts a 6-test-type coverage table on the source PR |
-| `/gen-chaos-pr` | [gen_chaos_pr.py](scripts/gen_chaos_pr.py) | Generates a chaos scenario and opens a PR in `mo-nightly-regression` |
+| `/auto-test-pr` | [auto_test_pr.py](scripts/auto_test_pr.py) | Analyzes 6-test-type coverage and auto-opens cross-repo PRs for every ⚠️ gap |
 
-Roadmap (~50 LoC each by copying [gen_chaos_pr.py](scripts/gen_chaos_pr.py)):
-- `/gen-stability-pr`, `/gen-bigdata-pr`, `/gen-pitr-pr`, `/gen-snapshot-pr`
+Legacy one-shot commands `/analyze-pr` and `/gen-chaos-pr` are kept in the script directory for local debugging, but the matrixone bridge only forwards `/auto-test-pr`. Do not advertise the legacy commands in user-facing output.
 
 ## Setup
 
@@ -66,7 +64,7 @@ And add one secret on matrixone: `BOT_DISPATCH_TOKEN` (PAT with `Contents: write
 ### 5. (Optional) Manual test before bridging
 
 Trigger `Test Coverage Bot` workflow via the Actions tab → `workflow_dispatch`:
-- `event_type: analyze-pr`
+- `event_type: auto-test-pr`
 - `pr_number: 24178`
 - `repo: matrixorigin/matrixone`
 
