@@ -462,9 +462,13 @@ BIGDATA_SYSTEM_TMPL = """你是 MatrixOne 大数据测试专家。根据 PR diff
 
 ## 大数据测试说明
 
-- 目标仓库：mo-nightly-regression，`big-data` 分支
+- 目标仓库：mo-nightly-regression，`big_data` 分支
 - 测试场景关注大规模 load（亿级行）后的查询正确性和性能
-- 配置文件位于 `big-data-test/` 目录
+- 现有测试组织在 `cases/` 下按 workload 分子目录，例如：
+  - `cases/load_data/`   — 大规模导入
+  - `cases/sysbench/`    — sysbench 压力
+  - `cases/tpcc/`        — TPCC 场景
+- 每个子目录通常包含 SQL、schema、调用脚本；新增一套测试请放到新子目录 `cases/<test_name>/` 下
 
 ## 输出（只输出一个 JSON 代码块）
 
@@ -473,7 +477,8 @@ BIGDATA_SYSTEM_TMPL = """你是 MatrixOne 大数据测试专家。根据 PR diff
   "test_name": "snake_case_name",
   "summary": "一句话说明",
   "files": [
-    {{"path": "big-data-test/<name>.yaml", "content": "<完整配置>"}}
+    {{"path": "cases/<test_name>/README.md", "content": "<场景说明、数据量、SQL 列表>"}},
+    {{"path": "cases/<test_name>/run.sh", "content": "<启动脚本，set -euo pipefail>"}}
   ]
 }}
 ```
@@ -613,7 +618,7 @@ def _gen_nightly_pr(
 
 def gen_bigdata(pr, skills, cross_token):
     return _gen_nightly_pr("大数据", BIGDATA_SYSTEM_TMPL, pr, skills, cross_token,
-                           target_branch=os.environ.get("BIGDATA_TARGET_BASE", "big-data"),
+                           target_branch=os.environ.get("BIGDATA_TARGET_BASE", "big_data"),
                            pr_prefix="bigdata")
 
 

@@ -76,17 +76,35 @@ class PRContext:
 # subprocess helpers
 # ---------------------------------------------------------------------------
 
+def _mask(text: str) -> str:
+    """Strip embedded tokens so they never leak into logs or PR comments."""
+    import re
+    # GitHub PATs: ghp_/ghs_/gho_/ghu_/ghr_ + [A-Za-z0-9]{36,}
+    text = re.sub(r"gh[pousr]_[A-Za-z0-9]{20,}", "***TOKEN***", text)
+    # Anything that looks like `x-access-token:<token>@` in a URL
+    text = re.sub(r"x-access-token:[^@\s]+@", "x-access-token:***@", text)
+    return text
+
+
 def run(cmd: list[str], check: bool = True, env: dict | None = None) -> str:
-    """Run a command, return stdout (str). Raises on non-zero when check=True."""
+    """Run a command, return stdout (str). Raises on non-zero when check=True.
+
+    All cmd args, stdout, stderr and raised messages are scrubbed of tokens
+    so credentials embedded in URLs (e.g. x-access-token:ghp_...@github.com)
+    never reach workflow logs or PR comments.
+    """
     proc = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
         env={**os.environ, **(env or {})},
     )
+    safe_cmd = " ".join(_mask(a) for a in cmd)
     if check and proc.returncode != 0:
-        sys.stderr.write(f"$ {' '.join(cmd)}\n{proc.stdout}{proc.stderr}\n")
-        raise RuntimeError(f"command failed (exit {proc.returncode}): {' '.join(cmd)}")
+        sys.stderr.write(f"$ {safe_cmd}\n{_mask(proc.stdout)}{_mask(proc.stderr)}\n")
+        raise RuntimeError(
+            f"command failed (exit {proc.returncode}): {safe_cmd}"
+        )
     return proc.stdout
 
 
@@ -208,10 +226,14 @@ def extract_json_block(text: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def post_pr_comment(pr_number: str, repo: str, body: str) -> None:
+    # Mask any token-shaped substrings defensively: errors bubbled up from
+    # subprocess calls may embed credentials (e.g. auth URLs), and we never
+    # want those landing in a public PR comment.
+    safe_body = _mask(body)
     # Use --body-file via stdin to avoid arg-length limits and shell escaping.
     proc = subprocess.run(
         ["gh", "pr", "comment", pr_number, "--repo", repo, "--body-file", "-"],
-        input=body, text=True, capture_output=True,
+        input=safe_body, text=True, capture_output=True,
     )
     if proc.returncode != 0:
         raise RuntimeError(f"gh pr comment failed: {proc.stderr}")
