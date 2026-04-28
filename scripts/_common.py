@@ -36,6 +36,12 @@ import requests
 
 SKILL_DIR = "docs/ai-skills"
 
+# Secondary skill directory for bot-local docs (test-generation rules,
+# target-repo layouts, etc.) that don't belong in the MO knowledge base.
+# Resolved relative to the scripts/ working directory at runtime; set
+# LOCAL_SKILL_DIR env var to override in tests.
+LOCAL_SKILL_DIR = os.environ.get("LOCAL_SKILL_DIR", "../skills")
+
 # Always-loaded skill docs (small, cheap, give the model baseline context).
 ALWAYS_SKILLS = ["module-test-mapping.md", "testing-guide.md"]
 
@@ -56,6 +62,12 @@ SKILL_RULES: list[tuple[str, str]] = [
     ("pkg/cnservice/", "architecture.md"),
     ("pkg/tnservice/", "architecture.md"),
     ("pkg/logservice/", "architecture.md"),
+    # Bot-local: generator rules for mo-nightly-regression big_data suite.
+    # Matches any scan/plan/storage change likely to need big-data coverage.
+    ("pkg/sql/plan/", "big-data-test.md"),
+    ("pkg/sql/colexec/", "big-data-test.md"),
+    ("pkg/sql/compile/", "big-data-test.md"),
+    ("pkg/vm/engine/disttae/", "big-data-test.md"),
 ]
 
 DIFF_LIMIT_CHARS = 12000
@@ -151,12 +163,20 @@ def load_skills(changed_files: Iterable[str], extra: Iterable[str] = ()) -> str:
     parts: list[str] = []
     total = 0
     for doc in selected:
-        path = os.path.join(SKILL_DIR, doc)
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read().rstrip()
-        except FileNotFoundError:
-            sys.stderr.write(f"warning: skill doc missing: {path}\n")
+        # Prefer the MO knowledge base (sparse-checked-out from matrixone's
+        # docs/ai-skills/); fall back to bot-local skills/ for docs that
+        # describe generator-side rules (e.g. big-data-test.md).
+        content = None
+        for candidate in (os.path.join(SKILL_DIR, doc),
+                          os.path.join(LOCAL_SKILL_DIR, doc)):
+            try:
+                with open(candidate, "r", encoding="utf-8") as f:
+                    content = f.read().rstrip()
+                break
+            except FileNotFoundError:
+                continue
+        if content is None:
+            sys.stderr.write(f"warning: skill doc missing: {doc}\n")
             continue
         chunk = f"=== {doc} ===\n{content}\n"
         if total + len(chunk) > SKILL_LIMIT_CHARS:
