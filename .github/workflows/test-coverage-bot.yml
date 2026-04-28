@@ -3,7 +3,9 @@ name: Test Coverage Bot
 # Triggered by `repository_dispatch` events sent from matrixone's bridge
 # workflow when a maintainer types a slash command in a PR comment.
 #
-# event_type: one of   analyze-pr | gen-chaos-pr  (extend as new generators land)
+# event_type: primary is `auto-test-pr`. `analyze-pr` / `gen-chaos-pr` are
+#   kept for local debugging of individual pipeline steps; the matrixone
+#   bridge no longer forwards them.
 # client_payload:
 #   pr_number:  source PR number in matrixone
 #   repo:       source repo (e.g. matrixorigin/matrixone)
@@ -11,13 +13,13 @@ name: Test Coverage Bot
 
 on:
   repository_dispatch:
-    types: [analyze-pr, gen-chaos-pr, auto-test-pr]
+    types: [auto-test-pr, analyze-pr, gen-chaos-pr]
   workflow_dispatch:
     inputs:
       event_type:
-        description: 'Command (analyze-pr | gen-chaos-pr | auto-test-pr)'
+        description: 'Command (auto-test-pr | analyze-pr [legacy, debug-only] | gen-chaos-pr [legacy, debug-only])'
         required: true
-        default: analyze-pr
+        default: auto-test-pr
       pr_number:
         description: 'matrixone PR number'
         required: true
