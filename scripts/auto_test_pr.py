@@ -341,6 +341,9 @@ def gen_stability(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
 
 BVT_TARGET_REPO = os.environ.get("BVT_TARGET_REPO", "matrixorigin/matrixone")
 BVT_TARGET_BASE = os.environ.get("BVT_TARGET_BASE", "main")
+# Branches are pushed to this fork and the PR opens against BVT_TARGET_REPO.
+# The bot's PAT only needs write access to BVT_HEAD_REPO.
+BVT_HEAD_REPO = os.environ.get("BVT_HEAD_REPO", "Ariznawlll/matrixone")
 
 BVT_SYSTEM_TMPL = """你是 MatrixOne BVT 测试专家。根据 PR diff 生成轻量级 SQL 回归测试（BVT），输出 .sql 文件和对应 .result 文件。
 
@@ -438,6 +441,7 @@ def gen_bvt(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
             target_repo=BVT_TARGET_REPO,
             base_branch=BVT_TARGET_BASE,
             head_branch=branch,
+            head_repo=BVT_HEAD_REPO,
             files=files,
             title=pr_title,
             body=pr_body,

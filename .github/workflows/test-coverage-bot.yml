@@ -107,11 +107,12 @@ jobs:
           GH_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
           CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
           BVT_CROSS_TOKEN: ${{ secrets.BVT_CROSS_TOKEN }}
-          # Push generated BVT branches to the bot owner's fork by default;
-          # maintainers can then open a PR from there to matrixorigin/matrixone.
-          # Override with repo/org variables if the bot runs under a different account.
-          BVT_TARGET_REPO: ${{ vars.BVT_TARGET_REPO || 'Ariznawlll/matrixone' }}
+          # BVT PRs land on upstream matrixorigin/matrixone; branches are
+          # pushed to the bot owner's fork (BVT_HEAD_REPO) and the PR is
+          # opened cross-fork. The PAT only needs write on the fork.
+          BVT_TARGET_REPO: ${{ vars.BVT_TARGET_REPO || 'matrixorigin/matrixone' }}
           BVT_TARGET_BASE: ${{ vars.BVT_TARGET_BASE || 'main' }}
+          BVT_HEAD_REPO: ${{ vars.BVT_HEAD_REPO || 'Ariznawlll/matrixone' }}
           BIGDATA_TARGET_BASE: ${{ vars.BIGDATA_TARGET_BASE || 'big_data' }}
           LLM_API_TOKEN: ${{ secrets.LLM_API_TOKEN }}
           LLM_API_BASE: ${{ vars.LLM_API_BASE || 'https://models.github.ai/inference' }}

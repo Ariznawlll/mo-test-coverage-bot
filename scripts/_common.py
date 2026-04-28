@@ -268,19 +268,35 @@ def open_cross_repo_pr(
     body: str,
     files: list[GeneratedFile],
     token: str,
+    head_repo: str | None = None,
     workdir: str = "/tmp/cross-repo-work",
 ) -> str:
-    """Clone target repo, write files, push branch, open PR. Returns PR URL."""
+    """Write files, push branch, open a PR on ``target_repo``.
+
+    Args:
+        target_repo: where the PR lands (e.g. ``matrixorigin/matrixone``).
+        head_repo:   where the branch is pushed. When different from
+                     ``target_repo`` this runs the standard fork-based
+                     workflow (push to fork, PR to upstream). Defaults to
+                     ``target_repo`` for same-repo generators.
+        token:       PAT with write access to ``head_repo`` and permission
+                     to open a PR on ``target_repo``. For fork workflows
+                     the fork owner's PAT is sufficient.
+    """
     if not token:
-        raise RuntimeError("CROSS_REPO_TOKEN not set; cannot push to target repo")
+        raise RuntimeError("token not set; cannot push to target repo")
+
+    push_repo = head_repo or target_repo
 
     os.makedirs(workdir, exist_ok=True)
     clone_dir = os.path.join(workdir, target_repo.replace("/", "_"))
     if os.path.exists(clone_dir):
         run(["rm", "-rf", clone_dir])
 
-    auth_url = f"https://x-access-token:{token}@github.com/{target_repo}.git"
-    run(["git", "clone", "--depth", "1", "--branch", base_branch, auth_url, clone_dir])
+    # Always clone upstream's base branch so we build on top of the latest
+    # state, even when the fork is stale. Push destination is swapped below.
+    upstream_url = f"https://x-access-token:{token}@github.com/{target_repo}.git"
+    run(["git", "clone", "--depth", "1", "--branch", base_branch, upstream_url, clone_dir])
 
     cwd = os.getcwd()
     try:
@@ -302,13 +318,25 @@ def open_cross_repo_pr(
             raise RuntimeError("generator produced no file changes; nothing to commit")
 
         run(["git", "commit", "-m", title])
+
+        # Repoint origin to the push destination (the fork, if different).
+        if push_repo != target_repo:
+            push_url = f"https://x-access-token:{token}@github.com/{push_repo}.git"
+            run(["git", "remote", "set-url", "origin", push_url])
         run(["git", "push", "-u", "origin", head_branch])
+
+        # For cross-fork PRs, `gh pr create --head` must be `owner:branch`.
+        if push_repo != target_repo:
+            fork_owner = push_repo.split("/")[0]
+            head_ref = f"{fork_owner}:{head_branch}"
+        else:
+            head_ref = head_branch
 
         pr_url = run([
             "gh", "pr", "create",
             "--repo", target_repo,
             "--base", base_branch,
-            "--head", head_branch,
+            "--head", head_ref,
             "--title", title,
             "--body", body,
         ], env={"GH_TOKEN": token}).strip()
