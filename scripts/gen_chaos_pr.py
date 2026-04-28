@@ -101,7 +101,7 @@ mysql -h "$MO_HOST" -P "$MO_PORT" -uroot -p111 -e "<assertion sql>"
 """
 
 
-SCENARIO_RE = re.compile(r"^[a-z0-9_]{3,40}$")
+SCENARIO_RE = re.compile(r"^[a-z0-9_]{3,60}$")
 
 
 def main() -> int:
