@@ -205,8 +205,17 @@ def call_llm(system_prompt: str, user_prompt: str, *, max_tokens: int = 4096,
     return resp.json()["choices"][0]["message"]["content"]
 
 
+_LENIENT_JSON = json.JSONDecoder(strict=False)
+
+
 def extract_json_block(text: str) -> dict:
-    """Extract the first ```json ... ``` block from LLM output and parse it."""
+    """Extract the first ```json ... ``` block from LLM output and parse it.
+
+    Uses a lenient decoder that tolerates unescaped control characters in
+    strings (strict=False). LLMs frequently embed multi-line YAML/SQL/shell
+    content inside a single JSON string value without escaping newlines,
+    which a strict ``json.loads`` rejects with "Unterminated string".
+    """
     start = text.find("```json")
     if start == -1:
         start = text.find("```")
@@ -218,7 +227,9 @@ def extract_json_block(text: str) -> dict:
     end = text.find("```", start)
     if end == -1:
         raise ValueError("unterminated code block in LLM output")
-    return json.loads(text[start:end])
+    payload = text[start:end]
+    obj, _ = _LENIENT_JSON.raw_decode(payload.lstrip())
+    return obj
 
 
 # ---------------------------------------------------------------------------
