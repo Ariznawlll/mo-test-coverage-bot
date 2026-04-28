@@ -737,7 +737,7 @@ def main() -> int:
 
     print(f"auto-test-pr: PR #{pr_number}, files={len(pr.files)}, diff={len(pr.diff)} chars",
           file=sys.stderr)
-    analysis_raw = c.call_llm(system_prompt, user_prompt, max_tokens=4000)
+    analysis_raw = c.call_llm(system_prompt, user_prompt, max_tokens=2000)
     needs = extract_needs(analysis_raw)
     analysis_md = strip_json_block(analysis_raw)
 

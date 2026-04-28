@@ -70,8 +70,8 @@ SKILL_RULES: list[tuple[str, str]] = [
     ("pkg/vm/engine/disttae/", "big-data-test.md"),
 ]
 
-DIFF_LIMIT_CHARS = 12000
-SKILL_LIMIT_CHARS = 20000
+DIFF_LIMIT_CHARS = 8000
+SKILL_LIMIT_CHARS = 10000
 
 
 @dataclass
@@ -132,7 +132,7 @@ def fetch_pr(pr_number: str, repo: str) -> PRContext:
     try:
         info = json.loads(info_raw)
         ctx.title = info.get("title", "")
-        ctx.body = (info.get("body") or "")[:4000]
+        ctx.body = (info.get("body") or "")[:1500]
     except json.JSONDecodeError:
         pass
 
@@ -198,6 +198,13 @@ def load_skills(changed_files: Iterable[str], extra: Iterable[str] = ()) -> str:
 # LLM call
 # ---------------------------------------------------------------------------
 
+# Hard cap on combined system+user prompt size before hitting the LLM gateway.
+# GitHub Models returns 413 well below the model's nominal context window, so
+# we enforce a conservative budget here and trim the user prompt (diff/files)
+# rather than the system prompt (which carries structural instructions).
+PROMPT_CHAR_BUDGET = 32000
+
+
 def call_llm(system_prompt: str, user_prompt: str, *, max_tokens: int = 4096,
              temperature: float = 0.3) -> str:
     api_base = os.environ.get("LLM_API_BASE") or "https://models.github.ai/inference"
@@ -205,6 +212,15 @@ def call_llm(system_prompt: str, user_prompt: str, *, max_tokens: int = 4096,
     token = os.environ.get("LLM_API_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
     if not token:
         raise RuntimeError("missing LLM token (set LLM_API_TOKEN or GITHUB_TOKEN)")
+
+    total = len(system_prompt) + len(user_prompt)
+    if total > PROMPT_CHAR_BUDGET:
+        room = max(0, PROMPT_CHAR_BUDGET - len(system_prompt))
+        sys.stderr.write(
+            f"warning: prompt {total} chars exceeds budget {PROMPT_CHAR_BUDGET}; "
+            f"trimming user prompt to {room} chars\n"
+        )
+        user_prompt = user_prompt[:room] + "\n\n[... truncated to fit LLM budget ...]"
 
     url = f"{api_base.rstrip('/')}/chat/completions"
     resp = requests.post(
