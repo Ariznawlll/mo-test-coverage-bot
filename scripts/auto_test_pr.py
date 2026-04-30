@@ -6,7 +6,7 @@
   2. 解析哪些类型标记为 ⚠️（需补充）
   3. 对每个 ⚠️ 类型自动操作：
      - Chaos    → 生成 chaos YAML + verify 脚本，向 mo-nightly-regression 提 PR
-     - 稳定性   → 生成稳定性配置补丁，向 mo-nightly-regression 提 PR
+     - 稳定性   → 使用 mo-nightly-regression 现有 workflow_dispatch，不生成配置 PR
      - BVT      → 生成 BVT SQL，向 matrixone fork 提 PR
      - 大数据   → 生成 big_data SQL，向 mo-nightly-regression 提 PR
      - PITR     → 生成 PITR 配置，向 mo-nightly-regression 提 PR
@@ -40,7 +40,7 @@ ANALYZE_SYSTEM_TMPL = """你是 MatrixOne 测试分析专家。任务：分析 P
 | 类型 | 仓库 | 说明 |
 |-----|------|------|
 | BVT | matrixone test/distributed/cases/ | 轻量级 SQL 回归测试 |
-| 稳定性 | mo-nightly-regression (main) | TPCH/TPCC/Sysbench/Fulltext-vector 长时间运行 |
+| 稳定性 | mo-nightly-regression workflow_dispatch | 现有 `stability-test-on-distributed.yaml`，无需新增配置文件 |
 | Chaos | mo-nightly-regression (main) | 故障注入（杀 CN/TN/LogService）+ 工作负载 |
 | 大数据 | mo-nightly-regression (big_data) | 大规模数据 load + 查询 |
 | PITR | mo-nightly-regression (main) | Point-In-Time Recovery 备份恢复 |
@@ -85,6 +85,7 @@ ANALYZE_SYSTEM_TMPL = """你是 MatrixOne 测试分析专家。任务：分析 P
 ## 约束
 - 只根据 skill 文档和 diff 内容分析，不猜测
 - 对每种类型必须给出明确判断
+- 稳定性测试只判断是否建议运行现有 `stability-test-on-distributed.yaml`，不要建议新增 `stability-test/` 配置文件
 - JSON 代码块必须在报告最后，单独一个 ```json ... ``` 块
 - **不要在建议里提示用户手动运行任何 slash 命令**（如 `/gen-chaos-pr`、`/gen-bigdata-pr` 等已废弃）。
   本命令 `/auto-test-pr` 会根据上述 JSON 自动为每个 ⚠️ 类型生成对应的跨仓 PR，无需用户再触发其他命令。
@@ -258,102 +259,34 @@ def gen_chaos(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Step 3: 稳定性配置补丁生成
+# Step 3: 稳定性测试说明
 # ---------------------------------------------------------------------------
 
-STABILITY_TARGET_REPO = os.environ.get("STABILITY_TARGET_REPO", CHAOS_TARGET_REPO)
-STABILITY_TARGET_BASE = os.environ.get("STABILITY_TARGET_BASE", "main")
-
-STABILITY_SYSTEM_TMPL = """你是 MatrixOne 稳定性测试专家。根据 PR diff 生成一个稳定性测试配置补丁，用于 mo-nightly-regression 仓库。
-
-## MO 知识库
-
-{skills}
-
-## 稳定性测试说明
-
-mo-nightly-regression 中稳定性测试包括：TPCH、TPCC、Sysbench、Fulltext-vector 等长时间运行的压力测试。
-配置文件位于 `stability-test/` 目录（yaml 配置）。
-
-## 输出（只输出一个 JSON 代码块）
-
-```json
-{{
-  "test_name": "snake_case_name",
-  "summary": "一句话说明",
-  "files": [
-    {{"path": "stability-test/<name>.yaml", "content": "<完整 yaml 配置>"}}
-  ]
-}}
-```
-
-## 约束
-- test_name 只能用小写字母、数字、下划线（3-60字符）
-- 配置应包含：测试类型、并发数、持续时间、关注的指标（latency/error-rate 等）
-- 如果不需要稳定性测试，返回 `{{"skip": true, "reason": "..."}}`
-"""
+STABILITY_WORKFLOW_REPO = os.environ.get(
+    "STABILITY_WORKFLOW_REPO",
+    "matrixorigin/mo-nightly-regression",
+)
+STABILITY_WORKFLOW_FILE = os.environ.get(
+    "STABILITY_WORKFLOW_FILE",
+    "stability-test-on-distributed.yaml",
+)
 
 TEST_NAME_RE = re.compile(r"^[a-z0-9_]{3,60}$")
 
 
 def gen_stability(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
-    system_prompt = STABILITY_SYSTEM_TMPL.format(skills=skills)
-    user_prompt = (
-        f"## 源 PR #{pr.number}（{pr.repo}）\n"
-        f"**标题：** {pr.title}\n\n"
-        f"## 改动文件\n{chr(10).join(pr.files)}\n\n"
-        f"## Diff\n```\n{pr.diff}\n```\n"
+    print("auto-test-pr: stability uses existing workflow; no PR generated",
+          file=sys.stderr)
+    workflow_url = (
+        f"https://github.com/{STABILITY_WORKFLOW_REPO}/actions/workflows/"
+        f"{STABILITY_WORKFLOW_FILE}"
     )
-
-    print("auto-test-pr: generating stability config", file=sys.stderr)
-    raw = c.call_llm(system_prompt, user_prompt, max_tokens=4000)
-    try:
-        spec = c.extract_json_block(raw)
-    except (ValueError, json.JSONDecodeError) as e:
-        return f"❌ 稳定性 PR 生成失败（LLM 解析错误）：{e}"
-
-    if spec.get("skip"):
-        return f"➖ 稳定性：{spec.get('reason', '不需要')}"
-
-    name = spec.get("test_name", "")
-    if not TEST_NAME_RE.match(name):
-        return f"❌ 稳定性 PR 生成失败：test_name `{name}` 不合法"
-
-    files: list[c.GeneratedFile] = []
-    for f in spec.get("files", []):
-        path, content = f.get("path"), f.get("content")
-        if path and content is not None:
-            mode = "100755" if path.endswith(".sh") else "100644"
-            files.append(c.GeneratedFile(path=path, content=content, mode=mode))
-
-    if not files:
-        return "❌ 稳定性 PR 生成失败：LLM 未输出有效文件"
-
-    branch = f"auto/stability-{name}-pr{pr.number}"
-    pr_title = f"test(stability): {spec.get('summary', name)} (from matrixone PR #{pr.number})"
-    pr_body = (
-        f"Auto-generated stability test for matrixone PR "
-        f"[#{pr.number}](https://github.com/{pr.repo}/pull/{pr.number}).\n\n"
-        f"**说明：** {spec.get('summary', '')}\n\n"
-        f"---\n*由 auto-test-pr bot 自动生成*"
+    return (
+        "➖ 稳定性：mo-nightly-regression 已有固定 workflow "
+        f"`{STABILITY_WORKFLOW_FILE}`，不需要新增配置文件或提交 PR。"
+        f"如需验证，请在 {workflow_url} 手动触发 `workflow_dispatch`，"
+        "选择目标 `Repo`/`Ref` 以及 TPCH/TPCC/Sysbench 规模参数。"
     )
-
-    try:
-        pr_url = c.open_cross_repo_pr(
-            target_repo=STABILITY_TARGET_REPO,
-            base_branch=STABILITY_TARGET_BASE,
-            head_branch=branch,
-            files=files,
-            title=pr_title,
-            body=pr_body,
-            token=cross_token,
-            path_allowlist=("stability-test/",),
-        )
-        return f"✅ 稳定性 PR 已提交：{pr_url}"
-    except c.DuplicateGeneratedTest as e:
-        return duplicate_skip_message("稳定性", e)
-    except Exception as e:
-        return f"❌ 稳定性 PR 提交失败：{e}"
 
 
 # ---------------------------------------------------------------------------

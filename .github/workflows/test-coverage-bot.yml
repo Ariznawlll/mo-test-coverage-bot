@@ -170,7 +170,8 @@ jobs:
           MO_TESTER_REF: ${{ vars.MO_TESTER_REF || 'main' }}
           MO_TESTER_DIR: ${{ vars.MO_TESTER_DIR || '' }}
           CHAOS_TARGET_REPO: ${{ vars.CHAOS_TARGET_REPO || 'Ariznawlll/mo-nightly-regression' }}
-          STABILITY_TARGET_REPO: ${{ vars.STABILITY_TARGET_REPO || 'Ariznawlll/mo-nightly-regression' }}
+          STABILITY_WORKFLOW_REPO: ${{ vars.STABILITY_WORKFLOW_REPO || 'matrixorigin/mo-nightly-regression' }}
+          STABILITY_WORKFLOW_FILE: ${{ vars.STABILITY_WORKFLOW_FILE || 'stability-test-on-distributed.yaml' }}
           NIGHTLY_TARGET_REPO: ${{ vars.NIGHTLY_TARGET_REPO || 'Ariznawlll/mo-nightly-regression' }}
           BIGDATA_TARGET_BASE: ${{ vars.BIGDATA_TARGET_BASE || 'big_data' }}
           DEDUP_SIMILARITY_THRESHOLD: ${{ vars.DEDUP_SIMILARITY_THRESHOLD || '0.88' }}
