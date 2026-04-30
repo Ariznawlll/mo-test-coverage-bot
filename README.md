@@ -45,6 +45,7 @@ matrixorigin/mo-test-coverage-bot      (or your fork)
 | `SOURCE_REPO_TOKEN` | PAT with `repo` scope on `matrixorigin/matrixone` (read PR diff, post comments, set reactions). |
 | `CROSS_REPO_TOKEN` | PAT with `repo` scope on `Ariznawlll/mo-nightly-regression` (push branches, open PRs). |
 | `BVT_CROSS_TOKEN` | Optional PAT for BVT PRs. If unset, `CROSS_REPO_TOKEN` is reused. |
+| `BVT_MO_PASSWORD` | Optional password used by mo-tester when `BVT_GEN_RESULT=true`. |
 
 ### 3. (Optional) Variables
 
@@ -53,6 +54,13 @@ matrixorigin/mo-test-coverage-bot      (or your fork)
 | `LLM_API_BASE` | `https://models.github.ai/inference` | LLM endpoint base URL |
 | `LLM_MODEL` | `openai/gpt-4.1` | Model name |
 | `BVT_TARGET_REPO` | `Ariznawlll/matrixone` | Repo where generated BVT PRs land |
+| `BVT_GEN_RESULT` | `false` | Set to `true` to run mo-tester in `genrs` mode and commit `.result` with BVT PRs. May also be configured as a secret. |
+| `BVT_MO_HOST` | unset | Public MO/MySQL-compatible host for BVT result generation. May also be configured as a secret. |
+| `BVT_MO_PORT` | `3306` | Public MO/MySQL-compatible port for BVT result generation. May also be configured as a secret. |
+| `BVT_MO_USER` | `root` | User for BVT result generation. May also be configured as a secret. |
+| `MO_TESTER_REPO` | `https://github.com/matrixorigin/mo-tester.git` | mo-tester repository to clone when generating `.result`. |
+| `MO_TESTER_REF` | `main` | mo-tester branch/tag to use. |
+| `MO_TESTER_DIR` | unset | Optional preinstalled mo-tester directory on a self-hosted runner. |
 | `NIGHTLY_TARGET_REPO` | `Ariznawlll/mo-nightly-regression` | Repo where big-data/PITR/Snapshot PRs land |
 | `CHAOS_TARGET_REPO` | `Ariznawlll/mo-nightly-regression` | Repo where Chaos PRs land |
 | `STABILITY_TARGET_REPO` | `Ariznawlll/mo-nightly-regression` | Repo where stability PRs land |

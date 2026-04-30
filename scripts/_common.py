@@ -29,7 +29,7 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 
 import requests
 
@@ -95,10 +95,15 @@ def _mask(text: str) -> str:
     text = re.sub(r"gh[pousr]_[A-Za-z0-9]{20,}", "***TOKEN***", text)
     # Anything that looks like `x-access-token:<token>@` in a URL
     text = re.sub(r"x-access-token:[^@\s]+@", "x-access-token:***@", text)
+    for key in ("BVT_MO_PASSWORD", "MO_PASSWORD"):
+        secret = os.environ.get(key, "")
+        if secret:
+            text = text.replace(secret, "***PASSWORD***")
     return text
 
 
-def run(cmd: list[str], check: bool = True, env: dict | None = None) -> str:
+def run(cmd: list[str], check: bool = True, env: dict | None = None,
+        cwd: str | None = None) -> str:
     """Run a command, return stdout (str). Raises on non-zero when check=True.
 
     All cmd args, stdout, stderr and raised messages are scrubbed of tokens
@@ -110,6 +115,7 @@ def run(cmd: list[str], check: bool = True, env: dict | None = None) -> str:
         capture_output=True,
         text=True,
         env={**os.environ, **(env or {})},
+        cwd=cwd,
     )
     safe_cmd = " ".join(_mask(a) for a in cmd)
     if check and proc.returncode != 0:
@@ -355,6 +361,7 @@ def open_cross_repo_pr(
     head_repo: str | None = None,
     workdir: str = "/tmp/cross-repo-work",
     path_allowlist: Sequence[str] | None = None,
+    before_commit: Callable[[str], None] | None = None,
 ) -> str:
     """Write files, push branch, open a PR on ``target_repo``.
 
@@ -369,6 +376,8 @@ def open_cross_repo_pr(
                      the fork owner's PAT is sufficient.
         path_allowlist: optional repo-root relative prefixes that generated
                         files must stay under.
+        before_commit: optional hook called with the cloned repo directory
+                       after generated files are written and before git add.
     """
     if not token:
         raise RuntimeError("token not set; cannot push to target repo")
@@ -404,6 +413,9 @@ def open_cross_repo_pr(
                 if gf.mode == "100755":
                     os.chmod(full, 0o755)
 
+        if before_commit:
+            before_commit(clone_dir)
+
         run(["git", "add", "-A"])
         # If nothing changed, abort gracefully.
         diff_check = subprocess.run(["git", "diff", "--cached", "--quiet"]).returncode
@@ -416,7 +428,21 @@ def open_cross_repo_pr(
         if push_repo != target_repo:
             push_url = f"https://x-access-token:{token}@github.com/{push_repo}.git"
             run(["git", "remote", "set-url", "origin", push_url])
-        run(["git", "push", "-u", "origin", head_branch])
+
+        remote_ref = run(["git", "ls-remote", "--heads", "origin", head_branch],
+                         check=False)
+        if remote_ref.strip():
+            remote_sha = remote_ref.split()[0]
+            # Bot branches are deterministic per source PR/test scenario. When
+            # a maintainer re-runs the command, update that bot-owned branch
+            # instead of failing with "fetch first".
+            run([
+                "git", "push",
+                f"--force-with-lease=refs/heads/{head_branch}:{remote_sha}",
+                "-u", "origin", head_branch,
+            ])
+        else:
+            run(["git", "push", "-u", "origin", head_branch])
 
         # For cross-fork PRs, `gh pr create --head` must be `owner:branch`.
         if push_repo != target_repo:
@@ -424,6 +450,18 @@ def open_cross_repo_pr(
             head_ref = f"{fork_owner}:{head_branch}"
         else:
             head_ref = head_branch
+
+        existing_pr = run([
+            "gh", "pr", "list",
+            "--repo", target_repo,
+            "--base", base_branch,
+            "--head", head_ref,
+            "--state", "open",
+            "--json", "url",
+            "--jq", ".[0].url",
+        ], env={"GH_TOKEN": token}, check=False).strip()
+        if existing_pr:
+            return existing_pr
 
         pr_url = run([
             "gh", "pr", "create",

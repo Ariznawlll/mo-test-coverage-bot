@@ -116,6 +116,12 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Setup Java for mo-tester
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+
       - name: Install deps
         run: pip install --quiet requests
 
@@ -152,6 +158,14 @@ jobs:
           BVT_TARGET_REPO: ${{ vars.BVT_TARGET_REPO || 'Ariznawlll/matrixone' }}
           BVT_TARGET_BASE: ${{ vars.BVT_TARGET_BASE || 'main' }}
           BVT_HEAD_REPO: ${{ vars.BVT_HEAD_REPO || 'Ariznawlll/matrixone' }}
+          BVT_GEN_RESULT: ${{ secrets.BVT_GEN_RESULT || vars.BVT_GEN_RESULT || 'false' }}
+          BVT_MO_HOST: ${{ secrets.BVT_MO_HOST || vars.BVT_MO_HOST || '' }}
+          BVT_MO_PORT: ${{ secrets.BVT_MO_PORT || vars.BVT_MO_PORT || '3306' }}
+          BVT_MO_USER: ${{ secrets.BVT_MO_USER || vars.BVT_MO_USER || 'root' }}
+          BVT_MO_PASSWORD: ${{ secrets.BVT_MO_PASSWORD }}
+          MO_TESTER_REPO: ${{ vars.MO_TESTER_REPO || 'https://github.com/matrixorigin/mo-tester.git' }}
+          MO_TESTER_REF: ${{ vars.MO_TESTER_REF || 'main' }}
+          MO_TESTER_DIR: ${{ vars.MO_TESTER_DIR || '' }}
           CHAOS_TARGET_REPO: ${{ vars.CHAOS_TARGET_REPO || 'Ariznawlll/mo-nightly-regression' }}
           STABILITY_TARGET_REPO: ${{ vars.STABILITY_TARGET_REPO || 'Ariznawlll/mo-nightly-regression' }}
           NIGHTLY_TARGET_REPO: ${{ vars.NIGHTLY_TARGET_REPO || 'Ariznawlll/mo-nightly-regression' }}
