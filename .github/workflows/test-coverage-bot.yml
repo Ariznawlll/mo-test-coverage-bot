@@ -163,6 +163,7 @@ jobs:
           BVT_MO_PORT: ${{ secrets.BVT_MO_PORT || vars.BVT_MO_PORT || '3306' }}
           BVT_MO_USER: ${{ secrets.BVT_MO_USER || vars.BVT_MO_USER || 'root' }}
           BVT_MO_PASSWORD: ${{ secrets.BVT_MO_PASSWORD }}
+          BVT_RESULT_DATABASE: ${{ secrets.BVT_RESULT_DATABASE || vars.BVT_RESULT_DATABASE || '' }}
           BVT_PROTECTED_DATABASES: ${{ vars.BVT_PROTECTED_DATABASES || '' }}
           MO_TESTER_REPO: ${{ vars.MO_TESTER_REPO || 'https://github.com/matrixorigin/mo-tester.git' }}
           MO_TESTER_REF: ${{ vars.MO_TESTER_REF || 'main' }}

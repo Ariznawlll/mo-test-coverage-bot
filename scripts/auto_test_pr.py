@@ -413,6 +413,7 @@ BVT_SYSTEM_TMPL = """你是 MatrixOne BVT 测试专家。根据 PR diff 生成�
 - 文件名用 snake_case，反映测试场景
 - 每个测试场景聚焦一个功能点，用 `-- comment` 解释每段 SQL 的意图
 - SQL 必须是**自闭环**的：`CREATE TABLE` → `INSERT`/DML → `SELECT` 验证 → `DROP TABLE` 清理，避免污染其他 case
+- 所有临时表名必须带有 `bvt_<test_name>_` 前缀，避免和已有表重名
 - 只使用当前 mo-tester case database 下的非限定表名；不要 `USE <db>`，不要 `CREATE/DROP/ALTER DATABASE`
 - 严禁读取或修改这些已有数据库：{protected_databases}
 
@@ -442,6 +443,35 @@ def _env_true(name: str) -> bool:
 
 def _yaml_string(value: str) -> str:
     return json.dumps(str(value), ensure_ascii=False)
+
+
+def _bvt_result_database() -> str:
+    database = os.environ.get("BVT_RESULT_DATABASE", "").strip()
+    if not database:
+        raise RuntimeError(
+            "BVT_GEN_RESULT is enabled but BVT_RESULT_DATABASE is not set; "
+            "configure a dedicated empty scratch database, e.g. "
+            "`mo_test_coverage_bot_pr123`"
+        )
+
+    if not re.match(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$", database):
+        raise RuntimeError(
+            "BVT_RESULT_DATABASE must be a simple database name containing only "
+            "letters, numbers, and underscores"
+        )
+
+    lowered = database.lower()
+    if lowered in _protected_databases():
+        raise RuntimeError(
+            f"BVT_RESULT_DATABASE `{database}` is protected; refuse to run BVT "
+            "result generation against an existing production/system database"
+        )
+    if not (lowered == "mo_test_coverage_bot" or lowered.startswith("mo_test_coverage_bot_")):
+        raise RuntimeError(
+            "BVT_RESULT_DATABASE must be a dedicated bot scratch database whose "
+            "name starts with `mo_test_coverage_bot`"
+        )
+    return database
 
 
 def _strip_sql_comments_and_strings(sql: str) -> str:
@@ -479,7 +509,33 @@ def _strip_sql_comments_and_strings(sql: str) -> str:
     return "".join(out)
 
 
-def _validate_bvt_sql_safety(sql: str) -> None:
+def _sql_identifier_pattern() -> str:
+    return r"(?:`([^`]+)`|([A-Za-z_][A-Za-z0-9_$]*))"
+
+
+def _collect_bvt_table_targets(clean_sql: str) -> set[str]:
+    ident = _sql_identifier_pattern()
+    targets: set[str] = set()
+    patterns = [
+        rf"\bcreate\s+(?:temporary\s+)?table\s+(?:if\s+not\s+exists\s+)?{ident}",
+        rf"\bdrop\s+table\s+(?:if\s+exists\s+)?{ident}",
+        rf"\balter\s+table\s+{ident}",
+        rf"\btruncate\s+table\s+{ident}",
+        rf"\binsert\s+into\s+{ident}",
+        rf"\bupdate\s+{ident}",
+        rf"\bdelete\s+from\s+{ident}",
+        rf"\bfrom\s+{ident}",
+        rf"\bjoin\s+{ident}",
+    ]
+    for pattern in patterns:
+        for match in re.finditer(pattern, clean_sql, flags=re.IGNORECASE):
+            target = (match.group(1) or match.group(2) or "").strip()
+            if target:
+                targets.add(target)
+    return targets
+
+
+def _validate_bvt_sql_safety(sql: str, test_name: str) -> None:
     protected = _protected_databases()
     clean = _strip_sql_comments_and_strings(sql)
 
@@ -505,6 +561,18 @@ def _validate_bvt_sql_safety(sql: str) -> None:
             "SQL explicitly references protected database(s): " + ", ".join(touched)
         )
 
+    expected_prefix = f"bvt_{test_name}_"
+    unsafe_targets = sorted(
+        table for table in _collect_bvt_table_targets(clean)
+        if not table.lower().startswith(expected_prefix)
+    )
+    if unsafe_targets:
+        raise ValueError(
+            "BVT table names must use the dedicated prefix "
+            f"`{expected_prefix}`; unsafe table target(s): "
+            + ", ".join(unsafe_targets[:10])
+        )
+
 
 def _prepare_mo_tester(workdir: str) -> str:
     configured = os.environ.get("MO_TESTER_DIR", "").strip()
@@ -524,7 +592,7 @@ def _prepare_mo_tester(workdir: str) -> str:
     return tester_dir
 
 
-def _write_mo_tester_config(tester_dir: str) -> None:
+def _write_mo_tester_config(tester_dir: str, database: str) -> None:
     host = os.environ.get("BVT_MO_HOST", "").strip()
     port = os.environ.get("BVT_MO_PORT", "3306").strip()
     user = os.environ.get("BVT_MO_USER", "root").strip()
@@ -545,7 +613,7 @@ jdbc:
   server:
   - addr: {_yaml_string(f"{host}:{port}")}
   database:
-    default: ""
+    default: {_yaml_string(database)}
   paremeter:
     characterSetResults: "utf8"
     continueBatchOnError: "false"
@@ -577,8 +645,9 @@ debug:
 
 def _bvt_result_hook(sql_path: str, result_path: str):
     def hook(clone_dir: str) -> None:
+        database = _bvt_result_database()
         tester_dir = _prepare_mo_tester(os.path.dirname(clone_dir))
-        _write_mo_tester_config(tester_dir)
+        _write_mo_tester_config(tester_dir, database)
 
         case_path = os.path.join(clone_dir, sql_path)
         resource_path = os.path.join(clone_dir, "test/distributed/resources")
@@ -635,7 +704,7 @@ def gen_bvt(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
     if not sql_content or len(sql_content) < 20:
         return "❌ BVT PR 生成失败：LLM 未输出有效 sql_content"
     try:
-        _validate_bvt_sql_safety(sql_content)
+        _validate_bvt_sql_safety(sql_content, name)
     except ValueError as e:
         return f"❌ BVT PR 生成失败：生成的 SQL 可能触碰已有数据库，已阻止执行：{e}"
 
