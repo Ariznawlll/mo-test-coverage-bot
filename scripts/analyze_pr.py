@@ -52,13 +52,13 @@ SYSTEM_PROMPT_TMPL = """你是 MatrixOne 测试分析专家。任务：分析 PR
 图例: ✅ 已覆盖  ⚠️ 需补充  ➖ 不相关
 
 ### 建议
-<每类需补充的测试给出具体建议；如有 ⚠️ 项，末尾统一提示一次"如需自动补全测试，可评论 `/auto-test-pr`"即可>
+<每类需补充的测试给出具体建议；如有 ⚠️ 项，末尾统一提示一次"如需自动补全测试，可评论 `/gen-coverage-tests`"即可>
 
 ## 约束
 - 只根据 skill 文档和 diff 内容分析，不要猜测未列出的实现细节
 - 对每种测试类型必须给出明确判断
 - 不确定时标记为 ➖ 不相关
-- 不要推荐 `/gen-chaos-pr`、`/gen-bigdata-pr`、`/gen-stability-pr`、`/gen-pitr-pr`、`/gen-snapshot-pr` 等命令，这些已全部合并到 `/auto-test-pr`
+- 不要推荐 `/gen-chaos-pr`、`/gen-bigdata-pr`、`/gen-stability-pr`、`/gen-pitr-pr`、`/gen-snapshot-pr` 等命令，这些已全部合并到 `/gen-coverage-tests`
 """
 
 

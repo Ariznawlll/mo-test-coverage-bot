@@ -3,9 +3,10 @@ name: Test Coverage Bot
 # Triggered by `repository_dispatch` events sent from matrixone's bridge
 # workflow when a maintainer types a slash command in a PR comment.
 #
-# event_type: primary is `auto-test-pr`. `analyze-pr` / `gen-chaos-pr` are
-#   kept for local debugging of individual pipeline steps; the matrixone
-#   bridge no longer forwards them.
+# event_type: primary is `gen-coverage-tests`; `auto-test-pr` is kept as a
+#   compatibility alias. `analyze-pr` / `gen-chaos-pr` are kept for local
+#   debugging of individual pipeline steps; the matrixone bridge no longer
+#   forwards them.
 # client_payload:
 #   pr_number:  source PR number in matrixone
 #   repo:       source repo (e.g. matrixorigin/matrixone)
@@ -13,13 +14,13 @@ name: Test Coverage Bot
 
 on:
   repository_dispatch:
-    types: [auto-test-pr, analyze-pr, gen-chaos-pr]
+    types: [gen-coverage-tests, auto-test-pr, analyze-pr, gen-chaos-pr]
   workflow_dispatch:
     inputs:
       event_type:
-        description: 'Command (auto-test-pr | analyze-pr [legacy, debug-only] | gen-chaos-pr [legacy, debug-only])'
+        description: 'Command (gen-coverage-tests | auto-test-pr [alias] | analyze-pr [legacy, debug-only] | gen-chaos-pr [legacy, debug-only])'
         required: true
-        default: auto-test-pr
+        default: gen-coverage-tests
       pr_number:
         description: 'matrixone PR number'
         required: true
@@ -69,7 +70,7 @@ jobs:
                   "comment_id": "",
               }
 
-          allowed_events = {"auto-test-pr", "analyze-pr", "gen-chaos-pr"}
+          allowed_events = {"gen-coverage-tests", "auto-test-pr", "analyze-pr", "gen-chaos-pr"}
           allowed_repos = {
               item.strip()
               for item in os.environ.get("SOURCE_REPO_ALLOWLIST", "").split(",")
@@ -139,7 +140,7 @@ jobs:
           case "${{ steps.ctx.outputs.event_type }}" in
             analyze-pr)    echo "script=analyze_pr.py"   >> "$GITHUB_OUTPUT" ;;
             gen-chaos-pr)  echo "script=gen_chaos_pr.py" >> "$GITHUB_OUTPUT" ;;
-            auto-test-pr)  echo "script=auto_test_pr.py" >> "$GITHUB_OUTPUT" ;;
+            gen-coverage-tests|auto-test-pr)  echo "script=auto_test_pr.py" >> "$GITHUB_OUTPUT" ;;
             *) echo "Unknown event_type: ${{ steps.ctx.outputs.event_type }}" >&2; exit 1 ;;
           esac
 

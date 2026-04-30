@@ -13,7 +13,8 @@ name: Test Coverage Bot Bridge
 # via repository_dispatch. All real logic lives in the bot repo.
 #
 # Supported commands (must appear at the very start of the comment body):
-#   /auto-test-pr     analyze coverage and auto-generate missing test PRs
+#   /gen-coverage-tests   analyze coverage and auto-generate missing test PRs
+#   /auto-test-pr         legacy compatibility alias
 
 on:
   issue_comment:
@@ -29,6 +30,7 @@ jobs:
       github.event.issue.pull_request &&
       contains(fromJSON('["MEMBER","OWNER","COLLABORATOR"]'), github.event.comment.author_association) &&
       (
+        startsWith(github.event.comment.body, '/gen-coverage-tests') ||
         startsWith(github.event.comment.body, '/auto-test-pr')
       )
     runs-on: ubuntu-latest
@@ -40,6 +42,7 @@ jobs:
         run: |
           body="$COMMENT_BODY"
           case "$body" in
+            /gen-coverage-tests*) echo "name=gen-coverage-tests" >> "$GITHUB_OUTPUT" ;;
             /auto-test-pr*) echo "name=auto-test-pr" >> "$GITHUB_OUTPUT" ;;
           esac
 
