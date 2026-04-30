@@ -58,6 +58,7 @@ matrixorigin/mo-test-coverage-bot      (or your fork)
 | `BVT_MO_HOST` | unset | Public MO/MySQL-compatible host for BVT result generation. May also be configured as a secret. |
 | `BVT_MO_PORT` | `3306` | Public MO/MySQL-compatible port for BVT result generation. May also be configured as a secret. |
 | `BVT_MO_USER` | `root` | User for BVT result generation. May also be configured as a secret. |
+| `BVT_PROTECTED_DATABASES` | built-in production/system list | Comma-separated database names that generated BVT SQL must never `USE`, create/drop/alter, or reference explicitly. |
 | `MO_TESTER_REPO` | `https://github.com/matrixorigin/mo-tester.git` | mo-tester repository to clone when generating `.result`. |
 | `MO_TESTER_REF` | `main` | mo-tester branch/tag to use. |
 | `MO_TESTER_DIR` | unset | Optional preinstalled mo-tester directory on a self-hosted runner. |
