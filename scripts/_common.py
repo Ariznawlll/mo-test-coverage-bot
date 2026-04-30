@@ -382,6 +382,8 @@ def _test_file_kind(path: str) -> str | None:
         return "yaml"
     if ext in {".sh", ".bash"}:
         return "shell"
+    if ext == ".py":
+        return "python"
     return None
 
 
@@ -467,6 +469,9 @@ def _normalise_test_content(path: str, content: str) -> list[str]:
         text = re.sub(r"\b\d+(?:\.\d+)?\b", " <num> ", text)
     elif kind == "shell":
         text = _strip_line_comments(text, "#")
+    elif kind == "python":
+        text = _strip_line_comments(text, "#")
+        text = _replace_quoted_literals(text)
 
     text = re.sub(r"\s+", " ", text)
     return re.findall(

@@ -6,7 +6,7 @@
   2. 解析哪些类型标记为 ⚠️（需补充）
   3. 对每个 ⚠️ 类型自动操作：
      - Chaos    → 生成 chaos YAML + verify 脚本，向 mo-nightly-regression 提 PR
-     - 稳定性   → 使用 mo-nightly-regression 现有 workflow_dispatch，不生成配置 PR
+     - 稳定性   → 生成现有稳定性 workflow 可启动的脚本用例，向 mo-nightly-regression 提 PR
      - BVT      → 生成 BVT SQL，向 matrixone fork 提 PR
      - 大数据   → 生成 big_data SQL，向 mo-nightly-regression 提 PR
      - PITR     → 生成 PITR 配置，向 mo-nightly-regression 提 PR
@@ -40,7 +40,7 @@ ANALYZE_SYSTEM_TMPL = """你是 MatrixOne 测试分析专家。任务：分析 P
 | 类型 | 仓库 | 说明 |
 |-----|------|------|
 | BVT | matrixone test/distributed/cases/ | 轻量级 SQL 回归测试 |
-| 稳定性 | mo-nightly-regression workflow_dispatch | 现有 `stability-test-on-distributed.yaml`，无需新增配置文件 |
+| 稳定性 | mo-nightly-regression script/stability_cases/ | 现有 `stability-test-on-distributed.yaml` 启动的长稳脚本用例 |
 | Chaos | mo-nightly-regression (main) | 故障注入（杀 CN/TN/LogService）+ 工作负载 |
 | 大数据 | mo-nightly-regression (big_data) | 大规模数据 load + 查询 |
 | PITR | mo-nightly-regression (main) | Point-In-Time Recovery 备份恢复 |
@@ -85,7 +85,7 @@ ANALYZE_SYSTEM_TMPL = """你是 MatrixOne 测试分析专家。任务：分析 P
 ## 约束
 - 只根据 skill 文档和 diff 内容分析，不猜测
 - 对每种类型必须给出明确判断
-- 稳定性测试只判断是否建议运行现有 `stability-test-on-distributed.yaml`，不要建议新增 `stability-test/` 配置文件
+- 稳定性测试如果需要补充，只建议补充现有 `stability-test-on-distributed.yaml` 可启动的脚本用例；不要建议新增 `stability-test/` 配置文件
 - JSON 代码块必须在报告最后，单独一个 ```json ... ``` 块
 - **不要在建议里提示用户手动运行任何 slash 命令**（如 `/gen-chaos-pr`、`/gen-bigdata-pr` 等已废弃）。
   本命令 `/auto-test-pr` 会根据上述 JSON 自动为每个 ⚠️ 类型生成对应的跨仓 PR，无需用户再触发其他命令。
@@ -259,9 +259,11 @@ def gen_chaos(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Step 3: 稳定性测试说明
+# Step 3: 稳定性脚本用例生成
 # ---------------------------------------------------------------------------
 
+STABILITY_TARGET_REPO = os.environ.get("STABILITY_TARGET_REPO", CHAOS_TARGET_REPO)
+STABILITY_TARGET_BASE = os.environ.get("STABILITY_TARGET_BASE", "main")
 STABILITY_WORKFLOW_REPO = os.environ.get(
     "STABILITY_WORKFLOW_REPO",
     "matrixorigin/mo-nightly-regression",
@@ -271,22 +273,199 @@ STABILITY_WORKFLOW_FILE = os.environ.get(
     "stability-test-on-distributed.yaml",
 )
 
+STABILITY_SYSTEM_TMPL = """你是 MatrixOne 稳定性测试专家。根据 PR diff 生成一个可被 mo-nightly-regression 现有稳定性 workflow 启动的长稳测试脚本用例。
+
+## MO 知识库
+
+{skills}
+
+## 目标仓库真实结构
+
+稳定性测试由 `.github/workflows/{workflow_file}` 触发，workflow 已经包含 TPCH、TPCC、Sysbench、Fulltext-vector、DML-vector 等固定长稳任务。
+
+不要新增 `stability-test/*.yaml`、不要新增“配置项”。如果确实缺稳定性覆盖，只补充 runnable test case：
+
+- 新增一个 Python 脚本到 `script/stability_cases/<test_name>.py`
+- 脚本会由 bot 自动接入现有 `{workflow_file}` 的通用启动 job
+- 脚本必须是独立可运行的长稳 workload，用命令行参数接收连接信息
+
+## 脚本接口要求
+
+生成的脚本必须支持：
+
+```bash
+python3 script/stability_cases/<test_name>.py \\
+  --host <MO_HOST> --port 6001 --user dump --password 111 --duration <seconds>
+```
+
+约束：
+- 只能连接 workflow 创建的临时 MO 集群；不要连接外部 MySQL
+- 只创建/删除自己专用的数据库，数据库名使用 `stability_ai_<test_name>` 前缀
+- 表名使用 `stability_ai_<test_name>_` 前缀
+- 长稳脚本应循环到 `--duration`，持续制造该 PR 相关的并发/压力/一致性场景
+- 每隔一段时间打印进度和错误计数
+- 出现明确一致性错误或不可恢复错误时 exit non-zero
+- 只能依赖 Python 标准库和 `pymysql`
+- 不要写死 token、云账号、外部地址、真实业务库名
+- 如果 PR 改动已经由现有 TPCH/TPCC/Sysbench/Fulltext-vector/DML-vector 覆盖，返回 skip
+
+## 输出（只输出一个 JSON 代码块）
+
+```json
+{{
+  "test_name": "snake_case_name",
+  "summary": "一句话说明",
+  "rationale": "为什么需要补充这个稳定性脚本用例",
+  "files": [
+    {{"path": "script/stability_cases/<test_name>.py", "content": "<完整 Python 脚本>"}}
+  ]
+}}
+```
+
+## 约束
+- test_name 只能用小写字母、数字、下划线（3-60 字符）
+- 只允许输出 `script/stability_cases/` 下的 `.py` 文件
+- 不要输出 workflow yaml；bot 会自动确保现有稳定性 workflow 启动这些脚本
+- 如果不需要新增稳定性脚本，返回 `{{"skip": true, "reason": "..."}}`
+"""
+
 TEST_NAME_RE = re.compile(r"^[a-z0-9_]{3,60}$")
 
 
+def _stability_workflow_hook():
+    def hook(clone_dir: str) -> None:
+        workflow_path = os.path.join(
+            clone_dir,
+            ".github",
+            "workflows",
+            STABILITY_WORKFLOW_FILE,
+        )
+        if not os.path.exists(workflow_path):
+            raise RuntimeError(f"stability workflow not found: {STABILITY_WORKFLOW_FILE}")
+
+        with open(workflow_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        if "start-ai-generated-stability-cases:" in content:
+            return
+
+        generated_job = """
+
+  start-ai-generated-stability-cases:
+    runs-on: mo-sta-128
+    name: Start AI Generated Stability Cases
+    needs: [docker-image-build,setup_mo_test_env,prepare-test-data]
+    steps:
+      - name: Clone mo-nightly-regression Repo
+        run: |
+          mkdir -p /data1/stability-test/${{ needs.prepare-test-data.outputs.runid }}/ai-generated-stability-cases
+          cd /data1/stability-test/${{ needs.prepare-test-data.outputs.runid }}/ai-generated-stability-cases
+          rm -rf mo-nightly-regression
+          git clone https://${{ secrets.TOOL_REPO_TOKEN }}@github.com/matrixorigin/mo-nightly-regression.git
+
+      - name: Start AI generated stability cases
+        run: |
+          export LC_ALL="C.UTF-8"
+          python3 -m pip install --upgrade pip
+          pip install pymysql
+          cd /data1/stability-test/${{ needs.prepare-test-data.outputs.runid }}/ai-generated-stability-cases/mo-nightly-regression
+          if compgen -G "script/stability_cases/*.py" > /dev/null; then
+            for case_file in script/stability_cases/*.py; do
+              case_name="$(basename "$case_file" .py)"
+              echo "Starting AI generated stability case: ${case_name}"
+              RUNNER_TRACKING_ID="" && nohup python3 "$case_file" --host ${{ env.LBIP }} --port 6001 --user dump --password 111 --duration $((${{ env.RunMinutes }} * 60)) > "${case_name}.log" 2>&1 </dev/null &
+            done
+          else
+            echo "No AI generated stability cases found."
+          fi
+"""
+        insert_at = content.find("\n#\n#  start-ddl-test:")
+        if insert_at == -1:
+            content = content.rstrip() + generated_job + "\n"
+        else:
+            content = content[:insert_at].rstrip() + generated_job + content[insert_at:]
+
+        with open(workflow_path, "w", encoding="utf-8") as f:
+            f.write(content)
+    return hook
+
+
 def gen_stability(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
-    print("auto-test-pr: stability uses existing workflow; no PR generated",
-          file=sys.stderr)
+    system_prompt = STABILITY_SYSTEM_TMPL.format(
+        skills=skills,
+        workflow_file=STABILITY_WORKFLOW_FILE,
+    )
+    user_prompt = (
+        f"## 源 PR #{pr.number}（{pr.repo}）\n"
+        f"**标题：** {pr.title}\n\n"
+        f"## 改动文件\n{chr(10).join(pr.files)}\n\n"
+        f"## Diff\n```\n{pr.diff}\n```\n"
+    )
+
+    print("auto-test-pr: generating stability script case", file=sys.stderr)
+    raw = c.call_llm(system_prompt, user_prompt, max_tokens=6000)
+    try:
+        spec = c.extract_json_block(raw)
+    except (ValueError, json.JSONDecodeError) as e:
+        return f"❌ 稳定性 PR 生成失败（LLM 解析错误）：{e}"
+
+    if spec.get("skip"):
+        return f"➖ 稳定性：{spec.get('reason', '不需要新增稳定性脚本')}"
+
+    name = spec.get("test_name", "")
+    if not TEST_NAME_RE.match(name):
+        return f"❌ 稳定性 PR 生成失败：test_name `{name}` 不合法"
+
+    files: list[c.GeneratedFile] = []
+    for f in spec.get("files", []):
+        path, content = f.get("path"), f.get("content")
+        if not path or content is None:
+            continue
+        if not path.startswith("script/stability_cases/") or not path.endswith(".py"):
+            return (
+                "❌ 稳定性 PR 生成失败：稳定性用例只能写入 "
+                f"`script/stability_cases/*.py`，实际路径 `{path}`"
+            )
+        files.append(c.GeneratedFile(path=path, content=content, mode="100755"))
+
+    if not files:
+        return "❌ 稳定性 PR 生成失败：LLM 未输出有效稳定性脚本"
+
+    branch = f"auto/stability-{name}-pr{pr.number}"
+    pr_title = f"test(stability): {spec.get('summary', name)} (from matrixone PR #{pr.number})"
     workflow_url = (
         f"https://github.com/{STABILITY_WORKFLOW_REPO}/actions/workflows/"
         f"{STABILITY_WORKFLOW_FILE}"
     )
-    return (
-        "➖ 稳定性：mo-nightly-regression 已有固定 workflow "
-        f"`{STABILITY_WORKFLOW_FILE}`，不需要新增配置文件或提交 PR。"
-        f"如需验证，请在 {workflow_url} 手动触发 `workflow_dispatch`，"
-        "选择目标 `Repo`/`Ref` 以及 TPCH/TPCC/Sysbench 规模参数。"
+    added = ", ".join(f"`{file.path}`" for file in files)
+    pr_body = (
+        f"Auto-generated stability script case for matrixone PR "
+        f"[#{pr.number}](https://github.com/{pr.repo}/pull/{pr.number}).\n\n"
+        f"**说明：** {spec.get('summary', '')}\n\n"
+        f"**原因：** {spec.get('rationale', '')}\n\n"
+        f"**Added:** {added}\n\n"
+        f"The bot also ensures `{STABILITY_WORKFLOW_FILE}` has a generic job "
+        f"to launch `script/stability_cases/*.py`. After merge, trigger the "
+        f"existing workflow: {workflow_url}\n\n"
+        f"---\n*由 auto-test-pr bot 自动生成*"
     )
+
+    try:
+        pr_url = c.open_cross_repo_pr(
+            target_repo=STABILITY_TARGET_REPO,
+            base_branch=STABILITY_TARGET_BASE,
+            head_branch=branch,
+            files=files,
+            title=pr_title,
+            body=pr_body,
+            token=cross_token,
+            path_allowlist=("script/stability_cases/",),
+            before_commit=_stability_workflow_hook(),
+        )
+        return f"✅ 稳定性 PR 已提交：{pr_url}"
+    except c.DuplicateGeneratedTest as e:
+        return duplicate_skip_message("稳定性", e)
+    except Exception as e:
+        return f"❌ 稳定性 PR 提交失败：{e}"
 
 
 # ---------------------------------------------------------------------------
