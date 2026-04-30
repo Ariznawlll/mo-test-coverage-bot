@@ -1,5 +1,5 @@
 """
-/gen-coverage-tests  -- 全自动测试覆盖补充。
+/auto-test-pr  -- 全自动测试覆盖补充。
 
 单条命令完成：
   1. 分析 PR diff，评估 6 类测试覆盖情况（同 /analyze-pr）
@@ -88,7 +88,7 @@ ANALYZE_SYSTEM_TMPL = """你是 MatrixOne 测试分析专家。任务：分析 P
 - 稳定性测试如果需要补充，只建议补充现有 `stability-test-on-distributed.yaml` 可启动的脚本用例；不要建议新增 `stability-test/` 配置文件
 - JSON 代码块必须在报告最后，单独一个 ```json ... ``` 块
 - **不要在建议里提示用户手动运行任何 slash 命令**（如 `/gen-chaos-pr`、`/gen-bigdata-pr` 等已废弃）。
-  本命令 `/gen-coverage-tests` 会根据上述 JSON 自动为每个 ⚠️ 类型生成对应的跨仓 PR，无需用户再触发其他命令。
+  本命令 `/auto-test-pr` 会根据上述 JSON 自动为每个 ⚠️ 类型生成对应的跨仓 PR，无需用户再触发其他命令。
 """
 
 
@@ -199,7 +199,7 @@ def gen_chaos(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
         f"## Diff\n```\n{pr.diff}\n```\n"
     )
 
-    print("gen-coverage-tests: generating chaos scenario", file=sys.stderr)
+    print("auto-test-pr: generating chaos scenario", file=sys.stderr)
     raw = c.call_llm(system_prompt, user_prompt, max_tokens=6000)
     try:
         spec = c.extract_json_block(raw)
@@ -237,7 +237,7 @@ def gen_chaos(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
         f"[#{pr.number}](https://github.com/{pr.repo}/pull/{pr.number}).\n\n"
         f"**场景说明：** {spec.get('summary', '')}\n\n"
         f"**原因：** {spec.get('rationale', '')}\n\n"
-        f"---\n*由 gen-coverage-tests bot 自动生成*"
+        f"---\n*由 auto-test-pr bot 自动生成*"
     )
 
     try:
@@ -401,7 +401,7 @@ def gen_stability(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
         f"## Diff\n```\n{pr.diff}\n```\n"
     )
 
-    print("gen-coverage-tests: generating stability script case", file=sys.stderr)
+    print("auto-test-pr: generating stability script case", file=sys.stderr)
     raw = c.call_llm(system_prompt, user_prompt, max_tokens=6000)
     try:
         spec = c.extract_json_block(raw)
@@ -446,7 +446,7 @@ def gen_stability(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
         f"The bot also ensures `{STABILITY_WORKFLOW_FILE}` has a generic job "
         f"to launch `script/stability_cases/*.py`. After merge, trigger the "
         f"existing workflow: {workflow_url}\n\n"
-        f"---\n*由 gen-coverage-tests bot 自动生成*"
+        f"---\n*由 auto-test-pr bot 自动生成*"
     )
 
     try:
@@ -819,7 +819,7 @@ def _bvt_result_hook(sql_path: str, result_path: str):
                 cmd.extend(["-s", resource_path])
 
             print(
-                f"gen-coverage-tests: generating BVT .result with mo-tester for {sql_path} "
+                f"auto-test-pr: generating BVT .result with mo-tester for {sql_path} "
                 f"using scratch database {database}",
                 file=sys.stderr,
             )
@@ -850,7 +850,7 @@ def gen_bvt(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
         f"## Diff\n```\n{pr.diff}\n```\n"
     )
 
-    print("gen-coverage-tests: generating BVT cases", file=sys.stderr)
+    print("auto-test-pr: generating BVT cases", file=sys.stderr)
     raw = c.call_llm(system_prompt, user_prompt, max_tokens=6000)
     try:
         spec = c.extract_json_block(raw)
@@ -905,7 +905,7 @@ def gen_bvt(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
         f"**Summary:** {spec.get('summary', '')}\n\n"
         f"**Added:** {added_files}\n\n"
         f"{result_note}\n"
-        f"---\n*由 gen-coverage-tests bot 自动生成*"
+        f"---\n*由 auto-test-pr bot 自动生成*"
     )
 
     try:
@@ -1053,7 +1053,7 @@ def _gen_nightly_pr(
         f"## Diff\n```\n{pr.diff}\n```\n"
     )
 
-    print(f"gen-coverage-tests: generating {label} config", file=sys.stderr)
+    print(f"auto-test-pr: generating {label} config", file=sys.stderr)
     raw = c.call_llm(system_prompt, user_prompt, max_tokens=4000)
     try:
         spec = c.extract_json_block(raw)
@@ -1083,7 +1083,7 @@ def _gen_nightly_pr(
         f"Auto-generated {label} test for matrixone PR "
         f"[#{pr.number}](https://github.com/{pr.repo}/pull/{pr.number}).\n\n"
         f"**说明：** {spec.get('summary', '')}\n\n"
-        f"---\n*由 gen-coverage-tests bot 自动生成*"
+        f"---\n*由 auto-test-pr bot 自动生成*"
     )
 
     try:
@@ -1118,7 +1118,7 @@ def gen_bigdata(pr, skills, cross_token):
         f"## Diff\n```\n{pr.diff}\n```\n"
     )
 
-    print("gen-coverage-tests: generating 大数据 case", file=sys.stderr)
+    print("auto-test-pr: generating 大数据 case", file=sys.stderr)
     raw = c.call_llm(system_prompt, user_prompt, max_tokens=4000)
     try:
         spec = c.extract_json_block(raw)
@@ -1159,7 +1159,7 @@ def gen_bigdata(pr, skills, cross_token):
         f"- [ ] Run each case against a 100M-row `big_data_test` to produce "
         f"`golden/big_data_test/{module}/{filename.replace('.sql', '.result')}`\n"
         f"- [ ] Verify literals still match real data distribution\n\n"
-        f"---\n*由 gen-coverage-tests bot 自动生成；golden 由 reviewer 人工补充*"
+        f"---\n*由 auto-test-pr bot 自动生成；golden 由 reviewer 人工补充*"
     )
 
     try:
@@ -1229,7 +1229,7 @@ def main() -> int:
         f"## Diff\n```\n{pr.diff}\n```\n"
     )
 
-    print(f"gen-coverage-tests: PR #{pr_number}, files={len(pr.files)}, diff={len(pr.diff)} chars",
+    print(f"auto-test-pr: PR #{pr_number}, files={len(pr.files)}, diff={len(pr.diff)} chars",
           file=sys.stderr)
     analysis_raw = c.call_llm(system_prompt, user_prompt, max_tokens=2000)
     needs = extract_needs(analysis_raw)
