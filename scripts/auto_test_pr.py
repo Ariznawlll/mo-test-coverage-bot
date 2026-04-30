@@ -382,24 +382,31 @@ BVT_PROTECTED_DATABASES = {
     "sys",
     "sysbench_db",
     "test",
+    "test01",
     "test_commitid",
     "test_cus_reg",
     "test_merge",
     "test_nightly",
     "test_nightly_aws_rc",
+    "test_nightly_bak",
     "test_nightly_dis",
     "test_nightly_tke",
+    "test_nightly_tke_bak",
     "test_nightly_tke_rc",
     "test_perf_aws",
     "test_qsq",
+    "cdc_test",
+    "db1_bak",
+    "serial_extract_nth_element_fast_path",
 }
 
 
 def _protected_databases() -> set[str]:
+    protected = set(BVT_PROTECTED_DATABASES)
     raw = os.environ.get("BVT_PROTECTED_DATABASES", "").strip()
-    if not raw:
-        return set(BVT_PROTECTED_DATABASES)
-    return {item.strip().lower() for item in raw.split(",") if item.strip()}
+    if raw:
+        protected.update(item.strip().lower() for item in raw.split(",") if item.strip())
+    return protected
 
 
 BVT_SYSTEM_TMPL = """你是 MatrixOne BVT 测试专家。根据 PR diff 生成轻量级 SQL 回归测试（BVT）的 `.sql` 文件。**不要**生成 `.result`——预期输出由 bot 或 reviewer 在真实 MO 上用 mo-tester 产出。
@@ -476,6 +483,11 @@ def _bvt_result_database() -> str:
     return database
 
 
+def _bvt_result_user_denylist() -> set[str]:
+    raw = os.environ.get("BVT_RESULT_USER_DENYLIST", "root,test_coverage,test_team")
+    return {item.strip().lower() for item in raw.split(",") if item.strip()}
+
+
 def _strip_sql_comments_and_strings(sql: str) -> str:
     sql = re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
     lines = []
@@ -515,6 +527,32 @@ def _sql_identifier_pattern() -> str:
     return r"(?:`([^`]+)`|([A-Za-z_][A-Za-z0-9_$]*))"
 
 
+def _sql_identifier_atom_pattern() -> str:
+    return r"(?:`[^`]+`|[A-Za-z_][A-Za-z0-9_$]*)"
+
+
+def _collect_bvt_qualified_table_targets(clean_sql: str) -> set[str]:
+    ident = _sql_identifier_atom_pattern()
+    qualified = rf"({ident}\s*\.\s*{ident})"
+    patterns = [
+        rf"\bcreate\s+(?:temporary\s+)?table\s+(?:if\s+not\s+exists\s+)?{qualified}",
+        rf"\bdrop\s+table\s+(?:if\s+exists\s+)?{qualified}",
+        rf"\balter\s+table\s+{qualified}",
+        rf"\btruncate\s+table\s+{qualified}",
+        rf"\binsert\s+into\s+{qualified}",
+        rf"\bupdate\s+{qualified}",
+        rf"\bdelete\s+from\s+{qualified}",
+        rf"\bfrom\s+{qualified}",
+        rf"\bjoin\s+{qualified}",
+    ]
+    targets: set[str] = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, clean_sql, flags=re.IGNORECASE):
+            target = re.sub(r"\s+", "", match.group(1))
+            targets.add(target.replace("`", ""))
+    return targets
+
+
 def _collect_bvt_table_targets(clean_sql: str) -> set[str]:
     ident = _sql_identifier_pattern()
     targets: set[str] = set()
@@ -538,7 +576,6 @@ def _collect_bvt_table_targets(clean_sql: str) -> set[str]:
 
 
 def _validate_bvt_sql_safety(sql: str, test_name: str) -> None:
-    protected = _protected_databases()
     clean = _strip_sql_comments_and_strings(sql)
 
     db_stmt = re.search(
@@ -551,16 +588,11 @@ def _validate_bvt_sql_safety(sql: str, test_name: str) -> None:
             f"SQL contains forbidden database-level statement: `{db_stmt.group(0)}`"
         )
 
-    qualified_refs: set[str] = set()
-    for match in re.finditer(r"(?:`([^`]+)`|([A-Za-z_][A-Za-z0-9_$]*))\s*\.", clean):
-        db = (match.group(1) or match.group(2) or "").strip().lower()
-        if db:
-            qualified_refs.add(db)
-
-    touched = sorted(db for db in qualified_refs if db in protected)
-    if touched:
+    qualified_targets = sorted(_collect_bvt_qualified_table_targets(clean))
+    if qualified_targets:
         raise ValueError(
-            "SQL explicitly references protected database(s): " + ", ".join(touched)
+            "BVT SQL must not use database-qualified table names; unsafe target(s): "
+            + ", ".join(qualified_targets[:10])
         )
 
     expected_prefix = f"bvt_{test_name}_"
@@ -606,6 +638,11 @@ def _write_mo_tester_config(tester_dir: str, database: str) -> None:
         raise RuntimeError("BVT_GEN_RESULT is enabled but BVT_MO_PORT is not set")
     if not user:
         raise RuntimeError("BVT_GEN_RESULT is enabled but BVT_MO_USER is not set")
+    if user.lower() in _bvt_result_user_denylist():
+        raise RuntimeError(
+            f"BVT_MO_USER `{user}` is blocked for BVT result generation; "
+            "use a dedicated low-privilege user such as `mo_bvt_bot`"
+        )
     if not password:
         raise RuntimeError("BVT_GEN_RESULT is enabled but BVT_MO_PASSWORD is not set")
 
