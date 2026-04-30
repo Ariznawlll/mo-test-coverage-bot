@@ -162,7 +162,7 @@ jobs:
           BVT_GEN_RESULT: ${{ vars.BVT_GEN_RESULT || secrets.BVT_GEN_RESULT || 'false' }}
           BVT_MO_HOST: ${{ vars.BVT_MO_HOST || secrets.BVT_MO_HOST || '' }}
           BVT_MO_PORT: ${{ vars.BVT_MO_PORT || secrets.BVT_MO_PORT || '3306' }}
-          BVT_MO_USER: ${{ vars.BVT_MO_USER || secrets.BVT_MO_USER || 'root' }}
+          BVT_MO_USER: ${{ vars.BVT_MO_USER || secrets.BVT_MO_USER || 'mo_bvt_bot' }}
           BVT_MO_PASSWORD: ${{ secrets.BVT_MO_PASSWORD }}
           BVT_RESULT_DATABASE: ${{ vars.BVT_RESULT_DATABASE || secrets.BVT_RESULT_DATABASE || '' }}
           BVT_RESULT_USER_DENYLIST: ${{ vars.BVT_RESULT_USER_DENYLIST || 'root,test_coverage,test_team' }}

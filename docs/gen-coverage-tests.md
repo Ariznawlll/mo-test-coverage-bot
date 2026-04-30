@@ -45,13 +45,14 @@ repo: matrixorigin/matrixone
 |------|------|
 | `BVT_GEN_RESULT=true` | 开启 `.result` 生成 |
 | `BVT_MO_HOST` / `BVT_MO_PORT` | MySQL/MO 连接地址 |
-| `BVT_MO_USER` / `BVT_MO_PASSWORD` | 连接用户和密码 |
+| `BVT_MO_USER` / `BVT_MO_PASSWORD` | 连接用户和密码；建议使用专用低权限用户 `mo_bvt_bot` |
 | `BVT_RESULT_DATABASE` | 专用 scratch 库，必须是 `mo_test_coverage_bot` 或 `mo_test_coverage_bot_` 前缀 |
 
 安全限制：
 
 - 默认拒绝使用 `root`、`test_coverage`、`test_team` 等高权限或共享用户生成结果。
-- 生成的 BVT SQL 不允许 `USE`、`CREATE DATABASE`、`DROP DATABASE`、`ALTER DATABASE`。
+- 生成的 BVT SQL 允许 `CREATE TABLE` / `DROP TABLE` 清理自己的测试表。
+- 生成的 BVT SQL 不允许 `USE`、`CREATE DATABASE/SCHEMA`、`DROP DATABASE/SCHEMA`、`ALTER DATABASE/SCHEMA`。
 - 生成的 BVT SQL 不允许显式引用 `db.table`，避免误碰共享库。
 - 测试表名必须使用独立前缀，避免和已有表冲突。
 - `BVT_RESULT_DATABASE` 必须是独立 scratch 库，不应指向业务库、历史结果库或团队共享库。
