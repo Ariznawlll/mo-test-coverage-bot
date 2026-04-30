@@ -174,16 +174,26 @@ def main() -> int:
         "---\n*由 AI Test Analyzer 自动生成。请人工 review 配置合理性后合并。*"
     )
 
-    pr_url = c.open_cross_repo_pr(
-        target_repo=TARGET_REPO,
-        base_branch=TARGET_BASE,
-        head_branch=head_branch,
-        title=title,
-        body=body,
-        files=files,
-        token=cross_token,
-        path_allowlist=("mo-chaos-config/",),
-    )
+    try:
+        pr_url = c.open_cross_repo_pr(
+            target_repo=TARGET_REPO,
+            base_branch=TARGET_BASE,
+            head_branch=head_branch,
+            title=title,
+            body=body,
+            files=files,
+            token=cross_token,
+            path_allowlist=("mo-chaos-config/",),
+        )
+    except c.DuplicateGeneratedTest as e:
+        c.post_pr_comment(
+            pr_number,
+            repo,
+            f"➖ /gen-chaos-pr: 已有重复或高度相似测试，跳过新增。"
+            f"生成文件 `{e.generated_path}` 命中已有文件 `{e.existing_path}`"
+            f"（相似度 {e.score:.2f}）。",
+        )
+        return 0
 
     c.post_pr_comment(pr_number, repo,
                       f"🚀 /gen-chaos-pr: 已为 chaos 场景 `{name}` 创建 PR：{pr_url}")

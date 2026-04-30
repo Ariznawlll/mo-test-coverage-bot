@@ -24,8 +24,10 @@ Environment variables:
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -315,6 +317,20 @@ class GeneratedFile:
 APPEND_PREFIX = "__APPEND__::"
 
 
+class DuplicateGeneratedTest(RuntimeError):
+    """Raised when a generated test already exists in the target repo."""
+
+    def __init__(self, generated_path: str, existing_path: str, score: float, reason: str):
+        self.generated_path = generated_path
+        self.existing_path = existing_path
+        self.score = score
+        self.reason = reason
+        super().__init__(
+            f"duplicate generated test: {generated_path} matches {existing_path} "
+            f"(score={score:.2f}, reason={reason})"
+        )
+
+
 def _repo_path(root: str, path: str, allowed_prefixes: Sequence[str] | None) -> tuple[str, str, bool]:
     """Return (full_path, normalized_relative_path, append_mode) after validation."""
     append = path.startswith(APPEND_PREFIX)
@@ -347,6 +363,212 @@ def _repo_path(root: str, path: str, allowed_prefixes: Sequence[str] | None) -> 
     if os.path.commonpath([root_abs, full]) != root_abs:
         raise RuntimeError(f"generated path escapes repo: {path!r}")
     return full, norm, append
+
+
+def _dedupe_threshold() -> float:
+    raw = os.environ.get("DEDUP_SIMILARITY_THRESHOLD", "0.88").strip()
+    try:
+        threshold = float(raw)
+    except ValueError:
+        threshold = 0.88
+    return min(1.0, max(0.5, threshold))
+
+
+def _test_file_kind(path: str) -> str | None:
+    ext = os.path.splitext(path.lower())[1]
+    if ext == ".sql":
+        return "sql"
+    if ext in {".yaml", ".yml"}:
+        return "yaml"
+    if ext in {".sh", ".bash"}:
+        return "shell"
+    return None
+
+
+def _strip_block_comments(text: str) -> str:
+    return re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
+
+
+def _strip_line_comment(line: str, marker: str) -> str:
+    quote = ""
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote:
+            if ch == "\\" and i + 1 < len(line):
+                i += 2
+                continue
+            if ch == quote:
+                if i + 1 < len(line) and line[i + 1] == quote:
+                    i += 2
+                    continue
+                quote = ""
+            i += 1
+            continue
+        if ch in {"'", '"'}:
+            quote = ch
+            i += 1
+            continue
+        if line.startswith(marker, i):
+            return line[:i]
+        i += 1
+    return line
+
+
+def _strip_line_comments(text: str, marker: str) -> str:
+    return "\n".join(_strip_line_comment(line, marker) for line in text.splitlines())
+
+
+def _replace_quoted_literals(text: str) -> str:
+    out: list[str] = []
+    quote = ""
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == "\\" and i + 1 < len(text):
+                i += 2
+                continue
+            if ch == quote:
+                if i + 1 < len(text) and text[i + 1] == quote:
+                    i += 2
+                    continue
+                quote = ""
+                out.append(" <str> ")
+            i += 1
+            continue
+        if ch in {"'", '"'}:
+            quote = ch
+            i += 1
+            continue
+        out.append(ch)
+        i += 1
+    if quote:
+        out.append(" <str> ")
+    return "".join(out)
+
+
+def _normalise_test_content(path: str, content: str) -> list[str]:
+    kind = _test_file_kind(path)
+    if kind is None:
+        return []
+
+    text = content.replace("\r\n", "\n").replace("\r", "\n").lower()
+    if kind == "sql":
+        text = _strip_block_comments(text)
+        text = _strip_line_comments(text, "--")
+        text = _replace_quoted_literals(text)
+        text = re.sub(r"`([^`]+)`", r"\1", text)
+        text = re.sub(r"\b0x[0-9a-f]+\b", " <num> ", text)
+        text = re.sub(r"\b\d+(?:\.\d+)?\b", " <num> ", text)
+    elif kind == "yaml":
+        text = _strip_line_comments(text, "#")
+        text = re.sub(r"\b0x[0-9a-f]+\b", " <num> ", text)
+        text = re.sub(r"\b\d+(?:\.\d+)?\b", " <num> ", text)
+    elif kind == "shell":
+        text = _strip_line_comments(text, "#")
+
+    text = re.sub(r"\s+", " ", text)
+    return re.findall(
+        r"<str>|<num>|\d+(?:\.\d+)?|[a-z_][a-z0-9_.$/-]*|[{}()[\]:,;=*<>!+-]",
+        text,
+    )
+
+
+def _token_similarity(left: list[str], right: list[str]) -> float:
+    if not left or not right:
+        return 0.0
+    if left == right:
+        return 1.0
+
+    seq_score = difflib.SequenceMatcher(None, left, right, autojunk=False).ratio()
+    left_set = set(left)
+    right_set = set(right)
+    jaccard = len(left_set & right_set) / max(1, len(left_set | right_set))
+    return max(seq_score, (seq_score * 0.75) + (jaccard * 0.25))
+
+
+def _iter_existing_test_files(
+    root: str,
+    allowed_prefixes: Sequence[str] | None,
+    kind: str,
+) -> Iterable[str]:
+    if allowed_prefixes:
+        starts = [p.strip("/").replace("\\", "/") for p in allowed_prefixes]
+    else:
+        starts = [""]
+
+    seen: set[str] = set()
+    for start in starts:
+        base = os.path.join(root, start)
+        if not os.path.isdir(base):
+            continue
+        for dirpath, dirnames, filenames in os.walk(base):
+            dirnames[:] = [
+                d for d in dirnames
+                if d not in {".git", "__pycache__"} and not d.startswith(".")
+            ]
+            for filename in filenames:
+                full = os.path.join(dirpath, filename)
+                rel = os.path.relpath(full, root).replace("\\", "/")
+                if rel in seen or _test_file_kind(rel) != kind:
+                    continue
+                seen.add(rel)
+                yield rel
+
+
+def _check_duplicate_generated_files(
+    root: str,
+    files: list[GeneratedFile],
+    allowed_prefixes: Sequence[str] | None,
+) -> None:
+    threshold = _dedupe_threshold()
+    normalised_cache: dict[str, list[str]] = {}
+    comparable: list[tuple[GeneratedFile, str, str, str, bool]] = []
+
+    for gf in files:
+        full, norm, append = _repo_path(root, gf.path, allowed_prefixes)
+        if append:
+            continue
+
+        kind = _test_file_kind(norm)
+        if kind is None:
+            continue
+        comparable.append((gf, full, norm, kind, os.path.exists(full)))
+
+    has_shell_in_bundle = (
+        len(comparable) > 1
+        and any(kind == "shell" for _, _, _, kind, _ in comparable)
+    )
+
+    for gf, full, norm, kind, path_exists in comparable:
+        if path_exists:
+            raise DuplicateGeneratedTest(norm, norm, 1.0, "path already exists")
+        if has_shell_in_bundle and kind == "yaml":
+            continue
+
+        generated_tokens = _normalise_test_content(norm, gf.content)
+        if len(generated_tokens) < 12:
+            continue
+
+        for existing_rel in _iter_existing_test_files(root, allowed_prefixes, kind):
+            existing_tokens = normalised_cache.get(existing_rel)
+            if existing_tokens is None:
+                existing_full = os.path.join(root, existing_rel)
+                try:
+                    with open(existing_full, "r", encoding="utf-8") as f:
+                        existing_content = f.read()
+                except (OSError, UnicodeDecodeError):
+                    existing_tokens = []
+                else:
+                    existing_tokens = _normalise_test_content(existing_rel, existing_content)
+                normalised_cache[existing_rel] = existing_tokens
+
+            if len(existing_tokens) < 12:
+                continue
+            score = _token_similarity(generated_tokens, existing_tokens)
+            if score >= threshold:
+                raise DuplicateGeneratedTest(norm, existing_rel, score, "content similarity")
 
 
 def open_cross_repo_pr(
@@ -400,6 +622,8 @@ def open_cross_repo_pr(
         run(["git", "config", "user.name", "mo-test-bot"])
         run(["git", "config", "user.email", "mo-test-bot@users.noreply.github.com"])
         run(["git", "checkout", "-b", head_branch])
+
+        _check_duplicate_generated_files(clone_dir, files, path_allowlist)
 
         for gf in files:
             full, _, append = _repo_path(clone_dir, gf.path, path_allowlist)

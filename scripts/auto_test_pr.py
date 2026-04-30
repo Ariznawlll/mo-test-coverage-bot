@@ -102,6 +102,15 @@ def strip_json_block(raw: str) -> str:
     return re.sub(r"```json\s*\{.*?\}\s*```", "", raw, flags=re.DOTALL).rstrip()
 
 
+def duplicate_skip_message(label: str, err: c.DuplicateGeneratedTest) -> str:
+    """Format duplicate-test detection as a normal skip result."""
+    return (
+        f"➖ {label}：已有重复或高度相似测试，跳过新增。"
+        f"生成文件 `{err.generated_path}` 命中已有文件 `{err.existing_path}`"
+        f"（相似度 {err.score:.2f}）。"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Step 2: Chaos 生成（与 gen_chaos_pr.py 共享逻辑）
 # ---------------------------------------------------------------------------
@@ -240,6 +249,8 @@ def gen_chaos(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
             path_allowlist=("mo-chaos-config/",),
         )
         return f"✅ Chaos PR 已提交：{pr_url}"
+    except c.DuplicateGeneratedTest as e:
+        return duplicate_skip_message("Chaos", e)
     except Exception as e:
         return f"❌ Chaos PR 提交失败：{e}"
 
@@ -337,6 +348,8 @@ def gen_stability(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
             path_allowlist=("stability-test/",),
         )
         return f"✅ 稳定性 PR 已提交：{pr_url}"
+    except c.DuplicateGeneratedTest as e:
+        return duplicate_skip_message("稳定性", e)
     except Exception as e:
         return f"❌ 稳定性 PR 提交失败：{e}"
 
@@ -672,6 +685,8 @@ def gen_bvt(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
             before_commit=_bvt_result_hook(sql_path, result_path) if generate_result else None,
         )
         return f"✅ BVT PR 已提交：{pr_url}"
+    except c.DuplicateGeneratedTest as e:
+        return duplicate_skip_message("BVT", e)
     except Exception as e:
         return f"❌ BVT PR 提交失败：{e}"
 
@@ -846,6 +861,8 @@ def _gen_nightly_pr(
             path_allowlist=path_allowlist,
         )
         return f"✅ {label} PR 已提交：{pr_url}"
+    except c.DuplicateGeneratedTest as e:
+        return duplicate_skip_message(label, e)
     except Exception as e:
         return f"❌ {label} PR 提交失败：{e}"
 
@@ -920,6 +937,8 @@ def gen_bigdata(pr, skills, cross_token):
             path_allowlist=("tools/mo-regression-test/cases/big_data_test/",),
         )
         return f"✅ 大数据 PR 已提交：{pr_url}"
+    except c.DuplicateGeneratedTest as e:
+        return duplicate_skip_message("大数据", e)
     except Exception as e:
         return f"❌ 大数据 PR 提交失败：{e}"
 

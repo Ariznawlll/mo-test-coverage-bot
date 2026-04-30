@@ -64,6 +64,7 @@ matrixorigin/mo-test-coverage-bot      (or your fork)
 | `MO_TESTER_DIR` | unset | Optional preinstalled mo-tester directory on a self-hosted runner. |
 | `NIGHTLY_TARGET_REPO` | `Ariznawlll/mo-nightly-regression` | Repo where big-data/PITR/Snapshot PRs land |
 | `CHAOS_TARGET_REPO` | `Ariznawlll/mo-nightly-regression` | Repo where Chaos PRs land |
+| `DEDUP_SIMILARITY_THRESHOLD` | `0.88` | Similarity threshold for skipping generated tests that already exist in the target repo. Applies to BVT, Chaos, stability, big-data, PITR, and Snapshot. |
 | `STABILITY_TARGET_REPO` | `Ariznawlll/mo-nightly-regression` | Repo where stability PRs land |
 | `SOURCE_REPO_ALLOWLIST` | `matrixorigin/matrixone` | Comma-separated source repos accepted from dispatch/workflow inputs |
 

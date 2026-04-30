@@ -171,6 +171,7 @@ jobs:
           STABILITY_TARGET_REPO: ${{ vars.STABILITY_TARGET_REPO || 'Ariznawlll/mo-nightly-regression' }}
           NIGHTLY_TARGET_REPO: ${{ vars.NIGHTLY_TARGET_REPO || 'Ariznawlll/mo-nightly-regression' }}
           BIGDATA_TARGET_BASE: ${{ vars.BIGDATA_TARGET_BASE || 'big_data' }}
+          DEDUP_SIMILARITY_THRESHOLD: ${{ vars.DEDUP_SIMILARITY_THRESHOLD || '0.88' }}
           LLM_API_TOKEN: ${{ secrets.LLM_API_TOKEN }}
           LLM_API_BASE: ${{ vars.LLM_API_BASE || 'https://models.github.ai/inference' }}
           LLM_MODEL: ${{ vars.LLM_MODEL || 'openai/gpt-4.1' }}
