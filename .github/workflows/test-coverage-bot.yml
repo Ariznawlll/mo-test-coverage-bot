@@ -152,9 +152,9 @@ jobs:
           BVT_TARGET_REPO: ${{ vars.BVT_TARGET_REPO || 'Ariznawlll/matrixone' }}
           BVT_TARGET_BASE: ${{ vars.BVT_TARGET_BASE || 'main' }}
           BVT_HEAD_REPO: ${{ vars.BVT_HEAD_REPO || 'Ariznawlll/matrixone' }}
-          CHAOS_TARGET_REPO: ${{ vars.CHAOS_TARGET_REPO || 'matrixorigin/mo-nightly-regression' }}
-          STABILITY_TARGET_REPO: ${{ vars.STABILITY_TARGET_REPO || 'matrixorigin/mo-nightly-regression' }}
-          NIGHTLY_TARGET_REPO: ${{ vars.NIGHTLY_TARGET_REPO || 'matrixorigin/mo-nightly-regression' }}
+          CHAOS_TARGET_REPO: ${{ vars.CHAOS_TARGET_REPO || 'Ariznawlll/mo-nightly-regression' }}
+          STABILITY_TARGET_REPO: ${{ vars.STABILITY_TARGET_REPO || 'Ariznawlll/mo-nightly-regression' }}
+          NIGHTLY_TARGET_REPO: ${{ vars.NIGHTLY_TARGET_REPO || 'Ariznawlll/mo-nightly-regression' }}
           BIGDATA_TARGET_BASE: ${{ vars.BIGDATA_TARGET_BASE || 'big_data' }}
           LLM_API_TOKEN: ${{ secrets.LLM_API_TOKEN }}
           LLM_API_BASE: ${{ vars.LLM_API_BASE || 'https://models.github.ai/inference' }}

@@ -106,7 +106,7 @@ def strip_json_block(raw: str) -> str:
 # Step 2: Chaos 生成（与 gen_chaos_pr.py 共享逻辑）
 # ---------------------------------------------------------------------------
 
-NIGHTLY_DEFAULT_REPO = "matrixorigin/mo-nightly-regression"
+NIGHTLY_DEFAULT_REPO = "Ariznawlll/mo-nightly-regression"
 
 CHAOS_TARGET_REPO = os.environ.get("CHAOS_TARGET_REPO", NIGHTLY_DEFAULT_REPO)
 CHAOS_TARGET_BASE = os.environ.get("CHAOS_TARGET_BASE", "main")

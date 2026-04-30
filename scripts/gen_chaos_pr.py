@@ -1,6 +1,6 @@
 """
 /gen-chaos-pr  -- generate a chaos test scenario for the source PR and
-open a cross-repo PR against matrixorigin/mo-nightly-regression.
+open a cross-repo PR against Ariznawlll/mo-nightly-regression.
 
 Flow:
   1. Fetch source PR diff/files.
@@ -32,7 +32,7 @@ import sys
 import _common as c
 
 
-TARGET_REPO = os.environ.get("CHAOS_TARGET_REPO", "matrixorigin/mo-nightly-regression")
+TARGET_REPO = os.environ.get("CHAOS_TARGET_REPO", "Ariznawlll/mo-nightly-regression")
 TARGET_BASE = os.environ.get("CHAOS_TARGET_BASE", "main")
 
 SYSTEM_PROMPT_TMPL = """你是 MatrixOne Chaos 测试专家。任务：根据 PR diff 设计一个 chaos 场景，生成 mo-nightly-regression 仓库需要新增/修改的文件。
@@ -41,7 +41,7 @@ SYSTEM_PROMPT_TMPL = """你是 MatrixOne Chaos 测试专家。任务：根据 PR
 
 {skills}
 
-## 仓库结构（matrixorigin/mo-nightly-regression, main 分支）
+## 仓库结构（mo-nightly-regression, main 分支）
 
 - `mo-chaos-config/chaos_<scenario>.yaml` — chaos 场景配置（目标 pod、故障类型、持续时间）
 - `mo-chaos-config/scripts/verify_<scenario>.sh` — 注入故障后的验证脚本（连接 MO，跑断言 SQL，检查日志）

@@ -1,6 +1,6 @@
 # mo-test-coverage-bot
 
-LLM-powered slash-command bot for analyzing [`matrixorigin/matrixone`](https://github.com/matrixorigin/matrixone) PRs and auto-generating cross-repo test PRs in [`matrixorigin/mo-nightly-regression`](https://github.com/matrixorigin/mo-nightly-regression).
+LLM-powered slash-command bot for analyzing [`matrixorigin/matrixone`](https://github.com/matrixorigin/matrixone) PRs and auto-generating test PRs in [`Ariznawlll/mo-nightly-regression`](https://github.com/Ariznawlll/mo-nightly-regression), ready to be manually merged into upstream [`matrixorigin/mo-nightly-regression`](https://github.com/matrixorigin/mo-nightly-regression).
 
 Lives outside matrixone so the database repo stays free of CI plumbing, LLM secrets, and prompt churn.
 
@@ -43,7 +43,7 @@ matrixorigin/mo-test-coverage-bot      (or your fork)
 |--------|---------|
 | `LLM_API_TOKEN` | LLM endpoint token. Default endpoint is GitHub Models — use a PAT with `models:read`. |
 | `SOURCE_REPO_TOKEN` | PAT with `repo` scope on `matrixorigin/matrixone` (read PR diff, post comments, set reactions). |
-| `CROSS_REPO_TOKEN` | PAT with `repo` scope on `matrixorigin/mo-nightly-regression` (push branches, open PRs). |
+| `CROSS_REPO_TOKEN` | PAT with `repo` scope on `Ariznawlll/mo-nightly-regression` (push branches, open PRs). |
 | `BVT_CROSS_TOKEN` | Optional PAT for BVT PRs. If unset, `CROSS_REPO_TOKEN` is reused. |
 
 ### 3. (Optional) Variables
@@ -53,9 +53,9 @@ matrixorigin/mo-test-coverage-bot      (or your fork)
 | `LLM_API_BASE` | `https://models.github.ai/inference` | LLM endpoint base URL |
 | `LLM_MODEL` | `openai/gpt-4.1` | Model name |
 | `BVT_TARGET_REPO` | `Ariznawlll/matrixone` | Repo where generated BVT PRs land |
-| `NIGHTLY_TARGET_REPO` | `matrixorigin/mo-nightly-regression` | Repo where big-data/PITR/Snapshot PRs land |
-| `CHAOS_TARGET_REPO` | `matrixorigin/mo-nightly-regression` | Repo where Chaos PRs land |
-| `STABILITY_TARGET_REPO` | `matrixorigin/mo-nightly-regression` | Repo where stability PRs land |
+| `NIGHTLY_TARGET_REPO` | `Ariznawlll/mo-nightly-regression` | Repo where big-data/PITR/Snapshot PRs land |
+| `CHAOS_TARGET_REPO` | `Ariznawlll/mo-nightly-regression` | Repo where Chaos PRs land |
+| `STABILITY_TARGET_REPO` | `Ariznawlll/mo-nightly-regression` | Repo where stability PRs land |
 | `SOURCE_REPO_ALLOWLIST` | `matrixorigin/matrixone` | Comma-separated source repos accepted from dispatch/workflow inputs |
 
 ### 4. Add the bridge workflow to matrixone
