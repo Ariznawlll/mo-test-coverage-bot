@@ -43,7 +43,8 @@ matrixorigin/mo-test-coverage-bot      (or your fork)
 |--------|---------|
 | `LLM_API_TOKEN` | LLM endpoint token. Default endpoint is GitHub Models — use a PAT with `models:read`. |
 | `SOURCE_REPO_TOKEN` | PAT with `repo` scope on `matrixorigin/matrixone` (read PR diff, post comments, set reactions). |
-| `CROSS_REPO_TOKEN` | PAT with `repo` scope on `matrixorigin/mo-nightly-regression` (push branches, open PRs). Required only for `/gen-*-pr` commands. |
+| `CROSS_REPO_TOKEN` | PAT with `repo` scope on `matrixorigin/mo-nightly-regression` (push branches, open PRs). |
+| `BVT_CROSS_TOKEN` | Optional PAT for BVT PRs. If unset, `CROSS_REPO_TOKEN` is reused. |
 
 ### 3. (Optional) Variables
 
@@ -51,6 +52,11 @@ matrixorigin/mo-test-coverage-bot      (or your fork)
 |----------|---------|---------|
 | `LLM_API_BASE` | `https://models.github.ai/inference` | LLM endpoint base URL |
 | `LLM_MODEL` | `openai/gpt-4.1` | Model name |
+| `BVT_TARGET_REPO` | `Ariznawlll/matrixone` | Repo where generated BVT PRs land |
+| `NIGHTLY_TARGET_REPO` | `matrixorigin/mo-nightly-regression` | Repo where big-data/PITR/Snapshot PRs land |
+| `CHAOS_TARGET_REPO` | `matrixorigin/mo-nightly-regression` | Repo where Chaos PRs land |
+| `STABILITY_TARGET_REPO` | `matrixorigin/mo-nightly-regression` | Repo where stability PRs land |
+| `SOURCE_REPO_ALLOWLIST` | `matrixorigin/matrixone` | Comma-separated source repos accepted from dispatch/workflow inputs |
 
 ### 4. Add the bridge workflow to matrixone
 
@@ -83,7 +89,7 @@ export LLM_API_TOKEN="$GITHUB_TOKEN"           # if using GitHub Models
 python analyze_pr.py
 ```
 
-For `/gen-chaos-pr`, also set `CROSS_REPO_TOKEN` to a token with write access to your `mo-nightly-regression` fork (and edit `TARGET_REPO` in `gen_chaos_pr.py` to point to your fork during testing).
+For local generation, set `CROSS_REPO_TOKEN` to a token with write access to the configured nightly target repo. BVT generation uses `BVT_CROSS_TOKEN` when present, otherwise `CROSS_REPO_TOKEN`.
 
 ## Adding a new generator
 

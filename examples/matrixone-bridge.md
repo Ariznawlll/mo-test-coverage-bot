@@ -13,8 +13,7 @@ name: Test Coverage Bot Bridge
 # via repository_dispatch. All real logic lives in the bot repo.
 #
 # Supported commands (must appear at the very start of the comment body):
-#   /analyze-pr       6-test-type coverage analysis
-#   /gen-chaos-pr     auto-generate chaos PR in mo-nightly-regression
+#   /auto-test-pr     analyze coverage and auto-generate missing test PRs
 
 on:
   issue_comment:
@@ -30,18 +29,18 @@ jobs:
       github.event.issue.pull_request &&
       contains(fromJSON('["MEMBER","OWNER","COLLABORATOR"]'), github.event.comment.author_association) &&
       (
-        startsWith(github.event.comment.body, '/analyze-pr') ||
-        startsWith(github.event.comment.body, '/gen-chaos-pr')
+        startsWith(github.event.comment.body, '/auto-test-pr')
       )
     runs-on: ubuntu-latest
     steps:
       - name: Determine command
         id: cmd
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
-          body="${{ github.event.comment.body }}"
+          body="$COMMENT_BODY"
           case "$body" in
-            /analyze-pr*)   echo "name=analyze-pr"   >> "$GITHUB_OUTPUT" ;;
-            /gen-chaos-pr*) echo "name=gen-chaos-pr" >> "$GITHUB_OUTPUT" ;;
+            /auto-test-pr*) echo "name=auto-test-pr" >> "$GITHUB_OUTPUT" ;;
           esac
 
       - name: Dispatch to bot repo

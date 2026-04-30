@@ -36,20 +36,61 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Resolve dispatch inputs
+      - name: Resolve and validate dispatch inputs
         id: ctx
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_EVENT_TYPE: ${{ github.event.action }}
+          DISPATCH_PR_NUMBER: ${{ github.event.client_payload.pr_number }}
+          DISPATCH_REPO: ${{ github.event.client_payload.repo }}
+          DISPATCH_COMMENT_ID: ${{ github.event.client_payload.comment_id }}
+          INPUT_EVENT_TYPE: ${{ inputs.event_type }}
+          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+          INPUT_REPO: ${{ inputs.repo }}
+          SOURCE_REPO_ALLOWLIST: ${{ vars.SOURCE_REPO_ALLOWLIST || 'matrixorigin/matrixone' }}
         run: |
-          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo "event_type=${{ github.event.action }}"                    >> "$GITHUB_OUTPUT"
-            echo "pr_number=${{ github.event.client_payload.pr_number }}"   >> "$GITHUB_OUTPUT"
-            echo "repo=${{ github.event.client_payload.repo }}"             >> "$GITHUB_OUTPUT"
-            echo "comment_id=${{ github.event.client_payload.comment_id }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "event_type=${{ inputs.event_type }}" >> "$GITHUB_OUTPUT"
-            echo "pr_number=${{ inputs.pr_number }}"   >> "$GITHUB_OUTPUT"
-            echo "repo=${{ inputs.repo }}"             >> "$GITHUB_OUTPUT"
-            echo "comment_id="                         >> "$GITHUB_OUTPUT"
-          fi
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+
+          if os.environ["EVENT_NAME"] == "repository_dispatch":
+              values = {
+                  "event_type": os.environ.get("DISPATCH_EVENT_TYPE", ""),
+                  "pr_number": os.environ.get("DISPATCH_PR_NUMBER", ""),
+                  "repo": os.environ.get("DISPATCH_REPO", ""),
+                  "comment_id": os.environ.get("DISPATCH_COMMENT_ID", ""),
+              }
+          else:
+              values = {
+                  "event_type": os.environ.get("INPUT_EVENT_TYPE", ""),
+                  "pr_number": os.environ.get("INPUT_PR_NUMBER", ""),
+                  "repo": os.environ.get("INPUT_REPO", ""),
+                  "comment_id": "",
+              }
+
+          allowed_events = {"auto-test-pr", "analyze-pr", "gen-chaos-pr"}
+          allowed_repos = {
+              item.strip()
+              for item in os.environ.get("SOURCE_REPO_ALLOWLIST", "").split(",")
+              if item.strip()
+          }
+
+          if values["event_type"] not in allowed_events:
+              sys.exit(f"invalid event_type: {values['event_type']!r}")
+          if not re.fullmatch(r"[1-9][0-9]{0,9}", values["pr_number"]):
+              sys.exit(f"invalid pr_number: {values['pr_number']!r}")
+          if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", values["repo"]):
+              sys.exit(f"invalid repo: {values['repo']!r}")
+          if allowed_repos and values["repo"] not in allowed_repos:
+              sys.exit(f"repo is not allowlisted: {values['repo']!r}")
+          if values["comment_id"] and not re.fullmatch(r"[1-9][0-9]{0,19}", values["comment_id"]):
+              sys.exit(f"invalid comment_id: {values['comment_id']!r}")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              for key, value in values.items():
+                  print(f"{key}={value}", file=out)
+          PY
 
       - name: Checkout bot repo
         uses: actions/checkout@v4
@@ -107,12 +148,13 @@ jobs:
           GH_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
           CROSS_REPO_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
           BVT_CROSS_TOKEN: ${{ secrets.BVT_CROSS_TOKEN }}
-          # BVT PRs land on upstream matrixorigin/matrixone; branches are
-          # pushed to the bot owner's fork (BVT_HEAD_REPO) and the PR is
-          # opened cross-fork. The PAT only needs write on the fork.
-          BVT_TARGET_REPO: ${{ vars.BVT_TARGET_REPO || 'matrixorigin/matrixone' }}
+          # BVT PRs land on the bot owner's matrixone fork by default.
+          BVT_TARGET_REPO: ${{ vars.BVT_TARGET_REPO || 'Ariznawlll/matrixone' }}
           BVT_TARGET_BASE: ${{ vars.BVT_TARGET_BASE || 'main' }}
           BVT_HEAD_REPO: ${{ vars.BVT_HEAD_REPO || 'Ariznawlll/matrixone' }}
+          CHAOS_TARGET_REPO: ${{ vars.CHAOS_TARGET_REPO || 'matrixorigin/mo-nightly-regression' }}
+          STABILITY_TARGET_REPO: ${{ vars.STABILITY_TARGET_REPO || 'matrixorigin/mo-nightly-regression' }}
+          NIGHTLY_TARGET_REPO: ${{ vars.NIGHTLY_TARGET_REPO || 'matrixorigin/mo-nightly-regression' }}
           BIGDATA_TARGET_BASE: ${{ vars.BIGDATA_TARGET_BASE || 'big_data' }}
           LLM_API_TOKEN: ${{ secrets.LLM_API_TOKEN }}
           LLM_API_BASE: ${{ vars.LLM_API_BASE || 'https://models.github.ai/inference' }}

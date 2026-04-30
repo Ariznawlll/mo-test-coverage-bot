@@ -65,6 +65,7 @@ SYSTEM_PROMPT_TMPL = """你是 MatrixOne 测试分析专家。任务：分析 PR
 def main() -> int:
     pr_number = os.environ["PR_NUMBER"]
     repo = os.environ.get("SOURCE_REPO") or os.environ["GITHUB_REPOSITORY"]
+    bot_repo = os.environ.get("BOT_REPO") or os.environ.get("GITHUB_REPOSITORY") or repo
 
     pr = c.fetch_pr(pr_number, repo)
     if not pr.diff.strip():
@@ -90,7 +91,7 @@ def main() -> int:
     run_id = os.environ.get("GITHUB_RUN_ID")
     if run_id:
         run_url = f"\n\n---\n*由 AI Test Analyzer 自动生成 · " \
-                  f"[workflow run](https://github.com/{repo}/actions/runs/{run_id})*"
+                  f"[workflow run](https://github.com/{bot_repo}/actions/runs/{run_id})*"
 
     c.post_pr_comment(pr_number, repo, result + run_url)
     return 0

@@ -7,10 +7,10 @@
   3. 对每个 ⚠️ 类型自动操作：
      - Chaos    → 生成 chaos YAML + verify 脚本，向 mo-nightly-regression 提 PR
      - 稳定性   → 生成稳定性配置补丁，向 mo-nightly-regression 提 PR
-     - BVT      → 在 PR 评论中给出具体 case 建议（需手动提交到 matrixone）
-     - 大数据   → 在评论中给出建议
-     - PITR     → 在评论中给出建议
-     - Snapshot → 在评论中给出建议
+     - BVT      → 生成 BVT SQL，向 matrixone fork 提 PR
+     - 大数据   → 生成 big_data SQL，向 mo-nightly-regression 提 PR
+     - PITR     → 生成 PITR 配置，向 mo-nightly-regression 提 PR
+     - Snapshot → 生成 Snapshot 配置，向 mo-nightly-regression 提 PR
 """
 
 from __future__ import annotations
@@ -106,7 +106,9 @@ def strip_json_block(raw: str) -> str:
 # Step 2: Chaos 生成（与 gen_chaos_pr.py 共享逻辑）
 # ---------------------------------------------------------------------------
 
-CHAOS_TARGET_REPO = os.environ.get("CHAOS_TARGET_REPO", "Ariznawlll/mo-nightly-regression")
+NIGHTLY_DEFAULT_REPO = "matrixorigin/mo-nightly-regression"
+
+CHAOS_TARGET_REPO = os.environ.get("CHAOS_TARGET_REPO", NIGHTLY_DEFAULT_REPO)
 CHAOS_TARGET_BASE = os.environ.get("CHAOS_TARGET_BASE", "main")
 
 CHAOS_SYSTEM_TMPL = """你是 MatrixOne Chaos 测试专家。根据 PR diff 设计一个 chaos 场景，生成 mo-nightly-regression 所需的文件。
@@ -203,13 +205,14 @@ def gen_chaos(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
     for f in spec.get("files", []):
         path, content = f.get("path"), f.get("content")
         if path and content is not None:
-            files.append(c.GeneratedFile(path=path, content=content))
+            mode = "100755" if path.endswith(".sh") else "100644"
+            files.append(c.GeneratedFile(path=path, content=content, mode=mode))
 
     patch = spec.get("registry_patch", {})
     if patch.get("path") and patch.get("append"):
         files.append(c.GeneratedFile(
-            path=patch["path"],
-            content=f"__APPEND__::{patch['append']}",
+            path=f"{c.APPEND_PREFIX}{patch['path']}",
+            content=patch["append"],
         ))
 
     if not files:
@@ -234,6 +237,7 @@ def gen_chaos(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
             title=pr_title,
             body=pr_body,
             token=cross_token,
+            path_allowlist=("mo-chaos-config/",),
         )
         return f"✅ Chaos PR 已提交：{pr_url}"
     except Exception as e:
@@ -306,7 +310,8 @@ def gen_stability(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
     for f in spec.get("files", []):
         path, content = f.get("path"), f.get("content")
         if path and content is not None:
-            files.append(c.GeneratedFile(path=path, content=content))
+            mode = "100755" if path.endswith(".sh") else "100644"
+            files.append(c.GeneratedFile(path=path, content=content, mode=mode))
 
     if not files:
         return "❌ 稳定性 PR 生成失败：LLM 未输出有效文件"
@@ -329,6 +334,7 @@ def gen_stability(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
             title=pr_title,
             body=pr_body,
             token=cross_token,
+            path_allowlist=("stability-test/",),
         )
         return f"✅ 稳定性 PR 已提交：{pr_url}"
     except Exception as e:
@@ -339,11 +345,12 @@ def gen_stability(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
 # Step 4: BVT case 生成 → PR to matrixone
 # ---------------------------------------------------------------------------
 
-BVT_TARGET_REPO = os.environ.get("BVT_TARGET_REPO", "matrixorigin/matrixone")
+BVT_TARGET_REPO = os.environ.get("BVT_TARGET_REPO", "Ariznawlll/matrixone")
 BVT_TARGET_BASE = os.environ.get("BVT_TARGET_BASE", "main")
-# Branches are pushed to this fork and the PR opens against BVT_TARGET_REPO.
-# The bot's PAT only needs write access to BVT_HEAD_REPO.
-BVT_HEAD_REPO = os.environ.get("BVT_HEAD_REPO", "Ariznawlll/matrixone")
+# By default BVT PRs land directly on the bot owner's matrixone fork. If
+# BVT_TARGET_REPO is later pointed back at upstream, BVT_HEAD_REPO can remain
+# a fork to open the PR cross-fork.
+BVT_HEAD_REPO = os.environ.get("BVT_HEAD_REPO", BVT_TARGET_REPO)
 
 BVT_SYSTEM_TMPL = """你是 MatrixOne BVT 测试专家。根据 PR diff 生成轻量级 SQL 回归测试（BVT）的 `.sql` 文件。**不要**生成 `.result`——预期输出由 reviewer 在真实 MO 上用 mo-tester 产出。
 
@@ -439,6 +446,7 @@ def gen_bvt(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
             title=pr_title,
             body=pr_body,
             token=cross_token,
+            path_allowlist=("test/distributed/cases/",),
         )
         return f"✅ BVT PR 已提交：{pr_url}"
     except Exception as e:
@@ -449,7 +457,7 @@ def gen_bvt(pr: c.PRContext, skills: str, cross_token: str) -> str | None:
 # Step 5: 通用 nightly-regression PR 生成（大数据/PITR/Snapshot）
 # ---------------------------------------------------------------------------
 
-NIGHTLY_TARGET_REPO = os.environ.get("NIGHTLY_TARGET_REPO", CHAOS_TARGET_REPO)
+NIGHTLY_TARGET_REPO = os.environ.get("NIGHTLY_TARGET_REPO", NIGHTLY_DEFAULT_REPO)
 
 BIGDATA_SYSTEM_TMPL = """你是 MatrixOne 大数据测试专家。根据 PR diff 生成大规模数据查询用例，提交到 mo-nightly-regression 仓库的 `big_data` 分支。
 
@@ -560,6 +568,7 @@ def _gen_nightly_pr(
     cross_token: str,
     target_branch: str,
     pr_prefix: str,
+    path_allowlist: tuple[str, ...],
 ) -> str | None:
     system_prompt = system_tmpl.format(skills=skills)
     user_prompt = (
@@ -587,7 +596,8 @@ def _gen_nightly_pr(
     for f in spec.get("files", []):
         path, content = f.get("path"), f.get("content")
         if path and content is not None:
-            files.append(c.GeneratedFile(path=path, content=content))
+            mode = "100755" if path.endswith(".sh") else "100644"
+            files.append(c.GeneratedFile(path=path, content=content, mode=mode))
 
     if not files:
         return f"❌ {label} PR 生成失败：LLM 未输出有效文件"
@@ -610,6 +620,7 @@ def _gen_nightly_pr(
             title=pr_title,
             body=pr_body,
             token=cross_token,
+            path_allowlist=path_allowlist,
         )
         return f"✅ {label} PR 已提交：{pr_url}"
     except Exception as e:
@@ -683,6 +694,7 @@ def gen_bigdata(pr, skills, cross_token):
             title=pr_title,
             body=pr_body,
             token=cross_token,
+            path_allowlist=("tools/mo-regression-test/cases/big_data_test/",),
         )
         return f"✅ 大数据 PR 已提交：{pr_url}"
     except Exception as e:
@@ -692,13 +704,15 @@ def gen_bigdata(pr, skills, cross_token):
 def gen_pitr(pr, skills, cross_token):
     return _gen_nightly_pr("PITR", PITR_SYSTEM_TMPL, pr, skills, cross_token,
                            target_branch=os.environ.get("PITR_TARGET_BASE", "main"),
-                           pr_prefix="pitr")
+                           pr_prefix="pitr",
+                           path_allowlist=("pitr-test/",))
 
 
 def gen_snapshot(pr, skills, cross_token):
     return _gen_nightly_pr("Snapshot", SNAPSHOT_SYSTEM_TMPL, pr, skills, cross_token,
                            target_branch=os.environ.get("SNAPSHOT_TARGET_BASE", "main"),
-                           pr_prefix="snapshot")
+                           pr_prefix="snapshot",
+                           path_allowlist=("snapshot-test/",))
 
 
 # ---------------------------------------------------------------------------
@@ -708,13 +722,14 @@ def gen_snapshot(pr, skills, cross_token):
 def main() -> int:
     pr_number = os.environ["PR_NUMBER"]
     repo = os.environ.get("SOURCE_REPO") or os.environ["GITHUB_REPOSITORY"]
+    bot_repo = os.environ.get("BOT_REPO") or os.environ.get("GITHUB_REPOSITORY") or repo
     cross_token = os.environ.get("CROSS_REPO_TOKEN", "")
     bvt_token = os.environ.get("BVT_CROSS_TOKEN") or cross_token
 
     run_id = os.environ.get("GITHUB_RUN_ID", "")
     run_url_suffix = (
         f"\n\n---\n*由 AI Test Analyzer 自动生成 · "
-        f"[workflow run](https://github.com/{repo}/actions/runs/{run_id})*"
+        f"[workflow run](https://github.com/{bot_repo}/actions/runs/{run_id})*"
     ) if run_id else ""
 
     pr = c.fetch_pr(pr_number, repo)

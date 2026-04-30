@@ -29,7 +29,7 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Iterable, Sequence
 
 import requests
 
@@ -306,6 +306,43 @@ class GeneratedFile:
     mode: str = "100644"  # git file mode
 
 
+APPEND_PREFIX = "__APPEND__::"
+
+
+def _repo_path(root: str, path: str, allowed_prefixes: Sequence[str] | None) -> tuple[str, str, bool]:
+    """Return (full_path, normalized_relative_path, append_mode) after validation."""
+    append = path.startswith(APPEND_PREFIX)
+    rel = path[len(APPEND_PREFIX):] if append else path
+    rel = rel.replace("\\", "/").strip()
+    norm = os.path.normpath(rel).replace("\\", "/")
+
+    if (
+        not rel
+        or any(ch in rel for ch in "\0\r\n")
+        or os.path.isabs(rel)
+        or norm in ("", ".")
+        or norm.startswith("../")
+        or "/../" in f"/{norm}/"
+        or norm == ".git"
+        or norm.startswith(".git/")
+    ):
+        raise RuntimeError(f"unsafe generated path: {path!r}")
+
+    if allowed_prefixes:
+        allowed = tuple(p.strip("/").replace("\\", "/") for p in allowed_prefixes)
+        if not any(norm == p or norm.startswith(f"{p}/") for p in allowed):
+            raise RuntimeError(
+                f"generated path outside allowed prefixes: {norm!r}; "
+                f"allowed={', '.join(allowed)}"
+            )
+
+    full = os.path.abspath(os.path.join(root, norm))
+    root_abs = os.path.abspath(root)
+    if os.path.commonpath([root_abs, full]) != root_abs:
+        raise RuntimeError(f"generated path escapes repo: {path!r}")
+    return full, norm, append
+
+
 def open_cross_repo_pr(
     *,
     target_repo: str,
@@ -317,6 +354,7 @@ def open_cross_repo_pr(
     token: str,
     head_repo: str | None = None,
     workdir: str = "/tmp/cross-repo-work",
+    path_allowlist: Sequence[str] | None = None,
 ) -> str:
     """Write files, push branch, open a PR on ``target_repo``.
 
@@ -329,6 +367,8 @@ def open_cross_repo_pr(
         token:       PAT with write access to ``head_repo`` and permission
                      to open a PR on ``target_repo``. For fork workflows
                      the fork owner's PAT is sufficient.
+        path_allowlist: optional repo-root relative prefixes that generated
+                        files must stay under.
     """
     if not token:
         raise RuntimeError("token not set; cannot push to target repo")
@@ -353,10 +393,16 @@ def open_cross_repo_pr(
         run(["git", "checkout", "-b", head_branch])
 
         for gf in files:
-            full = os.path.join(clone_dir, gf.path)
+            full, _, append = _repo_path(clone_dir, gf.path, path_allowlist)
             os.makedirs(os.path.dirname(full), exist_ok=True)
-            with open(full, "w", encoding="utf-8") as f:
-                f.write(gf.content)
+            if append:
+                with open(full, "a", encoding="utf-8") as f:
+                    f.write("\n" + gf.content.rstrip() + "\n")
+            else:
+                with open(full, "w", encoding="utf-8") as f:
+                    f.write(gf.content)
+                if gf.mode == "100755":
+                    os.chmod(full, 0o755)
 
         run(["git", "add", "-A"])
         # If nothing changed, abort gracefully.

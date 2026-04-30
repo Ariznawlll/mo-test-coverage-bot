@@ -32,7 +32,7 @@ import sys
 import _common as c
 
 
-TARGET_REPO = os.environ.get("CHAOS_TARGET_REPO", "Ariznawlll/mo-nightly-regression")
+TARGET_REPO = os.environ.get("CHAOS_TARGET_REPO", "matrixorigin/mo-nightly-regression")
 TARGET_BASE = os.environ.get("CHAOS_TARGET_BASE", "main")
 
 SYSTEM_PROMPT_TMPL = """你是 MatrixOne Chaos 测试专家。任务：根据 PR diff 设计一个 chaos 场景，生成 mo-nightly-regression 仓库需要新增/修改的文件。
@@ -154,11 +154,8 @@ def main() -> int:
 
     registry = spec.get("registry_patch")
     if registry and registry.get("path") and registry.get("append"):
-        # We need to append to existing file inside the cloned repo.
-        # Wrap a sentinel content so open_cross_repo_pr writes it after we pre-process.
-        # For simplicity, we read the existing file at clone-time via a small post-step:
         files.append(c.GeneratedFile(
-            path=f"__APPEND__::{registry['path']}",
+            path=f"{c.APPEND_PREFIX}{registry['path']}",
             content=registry["append"],
         ))
 
@@ -177,9 +174,7 @@ def main() -> int:
         "---\n*由 AI Test Analyzer 自动生成。请人工 review 配置合理性后合并。*"
     )
 
-    # Pre-process: handle __APPEND__ entries by reading from the cloned repo.
-    # We do that inline by extending open_cross_repo_pr semantics here:
-    pr_url = _open_pr_with_appends(
+    pr_url = c.open_cross_repo_pr(
         target_repo=TARGET_REPO,
         base_branch=TARGET_BASE,
         head_branch=head_branch,
@@ -187,68 +182,12 @@ def main() -> int:
         body=body,
         files=files,
         token=cross_token,
+        path_allowlist=("mo-chaos-config/",),
     )
 
     c.post_pr_comment(pr_number, repo,
                       f"🚀 /gen-chaos-pr: 已为 chaos 场景 `{name}` 创建 PR：{pr_url}")
     return 0
-
-
-def _open_pr_with_appends(*, target_repo, base_branch, head_branch, title, body,
-                          files: list[c.GeneratedFile], token: str) -> str:
-    """Like c.open_cross_repo_pr but supports __APPEND__::<path> sentinel."""
-    import os as _os
-    import subprocess as _sp
-
-    workdir = "/tmp/cross-repo-work"
-    _os.makedirs(workdir, exist_ok=True)
-    clone_dir = _os.path.join(workdir, target_repo.replace("/", "_"))
-    if _os.path.exists(clone_dir):
-        c.run(["rm", "-rf", clone_dir])
-
-    auth_url = f"https://x-access-token:{token}@github.com/{target_repo}.git"
-    c.run(["git", "clone", "--depth", "1", "--branch", base_branch, auth_url, clone_dir])
-
-    cwd = _os.getcwd()
-    try:
-        _os.chdir(clone_dir)
-        c.run(["git", "config", "user.name", "mo-test-bot"])
-        c.run(["git", "config", "user.email", "mo-test-bot@users.noreply.github.com"])
-        c.run(["git", "checkout", "-b", head_branch])
-
-        for gf in files:
-            if gf.path.startswith("__APPEND__::"):
-                target = gf.path[len("__APPEND__::"):]
-                full = _os.path.join(clone_dir, target)
-                _os.makedirs(_os.path.dirname(full), exist_ok=True)
-                with open(full, "a", encoding="utf-8") as f:
-                    f.write("\n" + gf.content.rstrip() + "\n")
-            else:
-                full = _os.path.join(clone_dir, gf.path)
-                _os.makedirs(_os.path.dirname(full), exist_ok=True)
-                with open(full, "w", encoding="utf-8") as f:
-                    f.write(gf.content)
-                if gf.mode == "100755":
-                    _os.chmod(full, 0o755)
-
-        c.run(["git", "add", "-A"])
-        if _sp.run(["git", "diff", "--cached", "--quiet"]).returncode == 0:
-            raise RuntimeError("generator produced no file changes; nothing to commit")
-
-        c.run(["git", "commit", "-m", title])
-        c.run(["git", "push", "-u", "origin", head_branch])
-
-        return c.run([
-            "gh", "pr", "create",
-            "--repo", target_repo,
-            "--base", base_branch,
-            "--head", head_branch,
-            "--title", title,
-            "--body", body,
-        ], env={"GH_TOKEN": token}).strip()
-    finally:
-        _os.chdir(cwd)
-
 
 if __name__ == "__main__":
     sys.exit(main())
