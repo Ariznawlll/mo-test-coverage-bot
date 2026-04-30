@@ -18,7 +18,9 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import sys
+import tempfile
 
 import _common as c
 
@@ -651,19 +653,35 @@ def _bvt_result_hook(sql_path: str, result_path: str):
 
         case_path = os.path.join(clone_dir, sql_path)
         resource_path = os.path.join(clone_dir, "test/distributed/resources")
-        cmd = ["bash", "run.sh", "-n", "-g", "-m", "genrs", "-p", case_path]
-        if os.path.isdir(resource_path):
-            cmd.extend(["-s", resource_path])
-
-        print(f"auto-test-pr: generating BVT .result with mo-tester for {sql_path}",
-              file=sys.stderr)
-        c.run(cmd, cwd=tester_dir)
-
         result_full = os.path.join(clone_dir, result_path)
-        if not os.path.exists(result_full):
-            raise RuntimeError(
-                f"mo-tester did not generate expected result file: {result_path}"
+
+        # mo-tester creates and drops a database named after the SQL file
+        # basename, so never run genrs directly on the final case filename.
+        # Use a guarded scratch basename and copy only the generated .result
+        # back to the matrixone tree.
+        with tempfile.TemporaryDirectory(prefix="bvt-genrs-") as tmpdir:
+            scratch_case = os.path.join(tmpdir, f"{database}.sql")
+            scratch_result = os.path.join(tmpdir, f"{database}.result")
+            shutil.copyfile(case_path, scratch_case)
+
+            cmd = ["bash", "run.sh", "-n", "-g", "-m", "genrs", "-p", scratch_case]
+            if os.path.isdir(resource_path):
+                cmd.extend(["-s", resource_path])
+
+            print(
+                f"auto-test-pr: generating BVT .result with mo-tester for {sql_path} "
+                f"using scratch database {database}",
+                file=sys.stderr,
             )
+            c.run(cmd, cwd=tester_dir)
+
+            if not os.path.exists(scratch_result):
+                raise RuntimeError(
+                    f"mo-tester did not generate expected result file: {result_path}"
+                )
+            os.makedirs(os.path.dirname(result_full), exist_ok=True)
+            shutil.copyfile(scratch_result, result_full)
+
         if os.path.getsize(result_full) == 0:
             raise RuntimeError(f"mo-tester generated an empty result file: {result_path}")
     return hook
